@@ -9,14 +9,16 @@
 // (screenshot harus 3-4 file JPEG/PNG, masing-masing <= 256 KiB; game/
 // harus punya index.html; game/ tidak boleh melewati cap file/byte scorer;
 // setiap .glb di game/assets/ harus ber-magic 'glTF' dan tidak kosong),
-// menghapus isi screenshots/ lama di output supaya file basi tidak bocor,
+// mengosongkan isi screenshots/ lama di output file-per-file (tanpa pernah
+// menghapus direktorinya — folder output grader adalah mount point) supaya
+// file basi tidak bocor,
 // dan mencetak laporan ukuran — jadi build yang lolos di sini sudah
 // memenuhi gate yang akan dipakai scorer (lihat reference/gate.json).
 //
 // Jalankan:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 // (dua run harus byte-identical: tidak ada timestamp/random di output.)
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -46,6 +48,23 @@ function listFiles(dir, rel = '') {
     else if (entry.isFile()) found.push(p);
   }
   return found.sort();
+}
+
+/**
+ * Kosongkan ISI direktori file-per-file (rekursif), TANPA PERNAH menghapus
+ * direktorinya sendiri — di mesin grader folder output adalah mount point dan
+ * rmSync pada direktori bisa gagal (pernah menggagalkan grading entri lain:
+ * program exited with code 1 karena menghapus folder output). Subdirektori
+ * di dalamnya hanya dikosongkan isinya, tidak dihapus. Dipakai untuk
+ * membersihkan output lama supaya file basi tidak bocor ke build berikutnya.
+ */
+function emptyDir(dir) {
+  if (!existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) emptyDir(full);
+    else if (entry.isFile()) unlinkSync(full);
+  }
 }
 
 // --- Validasi 1: screenshots/ harus 3-4 file JPEG/PNG, masing-masing <= 256 KiB.
@@ -100,11 +119,15 @@ for (const file of glbFiles) {
   glbBytes += size;
 }
 
-// --- Salin (hapus screenshots/ lama di output supaya file basi tidak bocor).
+// --- Salin (kosongkan isi output lama file-per-file supaya file basi tidak
+// bocor — JANGAN pernah menghapus direktorinya: di mesin grader folder output
+// adalah mount point dan penghapusan direktori bisa gagal grading).
 mkdirSync(out, { recursive: true });
-cpSync(gameDir, join(out, 'game'), { recursive: true });
-rmSync(join(out, 'screenshots'), { recursive: true, force: true });
+mkdirSync(join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
+emptyDir(join(out, 'game'));
+emptyDir(join(out, 'screenshots'));
+cpSync(gameDir, join(out, 'game'), { recursive: true });
 cpSync(shotsDir, join(out, 'screenshots'), { recursive: true });
 
 // --- Dossier (satu-satunya penulis dossier.json: library vendored).

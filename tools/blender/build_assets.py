@@ -217,6 +217,10 @@ def build_farmer():
     m_boot = mat("M_FarmerBoot", (0.36, 0.23, 0.12), 0.85)
     m_beard = mat("M_FarmerBeard", CREAM, 0.95)
     m_eye = mat("M_FarmerEye", DARK, 0.4)
+    # Mata BESAR (putih + pupil) supaya wajah terbaca dari kamera chase yang
+    # tinggi — mata lama 0.03 m tidak terbaca dari 5 m. Putih menonjol dari
+    # permukaan wajah, pupil menonjol dari putih.
+    m_eye_white = mat("M_FarmerEyeWhite", (1.0, 1.0, 1.0), 0.4)
     o = []
     for side, x in (("L", -0.17), ("R", 0.17)):
         o.append(cyl("Farmer_Leg_" + side, (x, 0, 0.30), (0.11, 0.11, 0.60), m_denim, 10))
@@ -237,11 +241,14 @@ def build_farmer():
     o.append(sphere("Farmer_Head", (0, -0.02, 1.66), (0.23, 0.22, 0.23), m_skin, 14, 10))
     o.append(sphere("Farmer_Beard", (0, -0.16, 1.52), (0.16, 0.10, 0.14), m_beard, 10, 8))
     o.append(sphere("Farmer_Nose", (0, -0.24, 1.66), (0.05, 0.05, 0.05), m_skin, 8, 8))
-    o.append(sphere("Farmer_Eye_L", (-0.09, -0.20, 1.72), (0.03, 0.03, 0.03), m_eye, 8, 8))
-    o.append(sphere("Farmer_Eye_R", (0.09, -0.20, 1.72), (0.03, 0.03, 0.03), m_eye, 8, 8))
-    # Topi jerami: piringan + kubah.
-    o.append(cyl("Farmer_HatBrim", (0, -0.02, 1.86), (0.44, 0.44, 0.04), m_hat, 16))
-    o.append(sphere("Farmer_HatTop", (0, -0.02, 1.88), (0.24, 0.24, 0.16), m_hat, 12, 8))
+    o.append(sphere("Farmer_EyeWhite_L", (-0.09, -0.215, 1.72), (0.065, 0.065, 0.05), m_eye_white, 10, 8))
+    o.append(sphere("Farmer_EyeWhite_R", (0.09, -0.215, 1.72), (0.065, 0.065, 0.05), m_eye_white, 10, 8))
+    o.append(sphere("Farmer_Eye_L", (-0.09, -0.26, 1.72), (0.032, 0.032, 0.032), m_eye, 8, 8))
+    o.append(sphere("Farmer_Eye_R", (0.09, -0.26, 1.72), (0.032, 0.032, 0.032), m_eye, 8, 8))
+    # Topi jerami: piringan + kubah. Piringan dikecilkan (0.44->0.40) dan
+    # dinaikkan (1.86->1.90) supaya tidak menaungi mata dari kamera tinggi.
+    o.append(cyl("Farmer_HatBrim", (0, -0.02, 1.90), (0.40, 0.40, 0.04), m_hat, 16))
+    o.append(sphere("Farmer_HatTop", (0, -0.02, 1.92), (0.24, 0.24, 0.16), m_hat, 12, 8))
     return o
 
 

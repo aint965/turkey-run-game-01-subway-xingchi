@@ -30,9 +30,17 @@
   #hud-hearts { top: 62px; right: 14px; color: #ff7a6b; letter-spacing: 2px; }
   #hud-speed { top: 62px; left: 14px; font-size: 16px; }
   #hud-zone { bottom: 14px; left: 14px; font-size: 16px; color: #f2c94c; }
-  #farmer-meter { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-    width: 260px; background: rgba(26, 18, 16, 0.72); border-radius: 10px; padding: 8px 12px;
+  /* Meter Bram pindah ke kanan-bawah (kiri-bawah ada chip zona, tengah-bawah
+     ada Bram + kalkun — meter di tengah menutupi tepi topi Bram di shot
+     play v1). Lebar dikecilkan 260 -> 220 px. */
+  #farmer-meter { position: absolute; bottom: 14px; right: 14px; left: auto; transform: none;
+    width: 220px; background: rgba(26, 18, 16, 0.72); border-radius: 10px; padding: 8px 12px;
     color: #fff6e0; font-weight: 700; font-size: 15px; text-align: center; }
+  #banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%) scale(0.9); z-index: 6;
+    pointer-events: none; background: rgba(26, 18, 16, 0.82); border: 3px solid #f2c94c; color: #f2c94c;
+    border-radius: 14px; padding: 12px 26px; font-weight: 800; font-size: 30px; opacity: 0;
+    transition: opacity 0.25s ease, transform 0.25s ease; }
+  #banner.show { opacity: 1; transform: translateX(-50%) scale(1); }
   #farmer-bar { height: 10px; background: #3a2a22; border-radius: 5px; margin-top: 6px; overflow: hidden; }
   #farmer-fill { height: 100%; width: 0%; background: #e5534b; border-radius: 5px; }
   #farmer-warn { color: #ff8a7a; display: none; margin-top: 4px; }
@@ -63,6 +71,7 @@
   <div class="hud-chip" id="hud-zone">HALAMAN PETERNAKAN</div>
   <div id="farmer-meter">BRAM MENGEJAR<div id="farmer-bar"><div id="farmer-fill"></div></div><div id="farmer-warn">⚠ BRAM MAKIN DEKAT!</div></div>
 </div>
+<div id="banner"></div>
 
 <div class="overlay" id="screen-title">
   <div class="panel">

@@ -189,8 +189,9 @@ export function stageShot(name, world) {
   world.reset();
   if (name !== 'play' && name !== 'slide' && name !== 'end') {
     runSeconds(world, START_SECONDS, HORIZON_GOOD, null);
-    // Kalkun tetap di tengah, tapi panel judul dipindah ke ATAS (CSS) supaya
-    // kalkun + trek terlihat di bawahnya.
+    // Cover: Bram menghadap kamera + melambai (taunt) supaya wajahnya
+    // terlihat di shot 1-start — kalkun tetap lari di attract mode.
+    world.state.farmerTaunt = true;
     world.state.player.invulnerable = 0;
     return { screen: SCREEN_TITLE, best: 0 };
   }

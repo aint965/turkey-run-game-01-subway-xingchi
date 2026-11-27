@@ -29,11 +29,11 @@ export function createRenderer(canvas, templates) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(ZONES[0].sky);
   scene.fog = new THREE.Fog(ZONES[0].fog, 55, 110);
-  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 200);
 
-  const hemi = new THREE.HemisphereLight(0xfff2d0, 0x5d8a3a, 1.15);
+  const hemi = new THREE.HemisphereLight(0xfff2d0, 0x5d8a3a, 1.25);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffe8b0, 1.6);
+  const sun = new THREE.DirectionalLight(0xffe8b0, 1.75);
   sun.position.set(6, 12, 6);
   scene.add(sun);
 
@@ -108,11 +108,31 @@ export function createRenderer(canvas, templates) {
     const add = (geo, hex, x, y, z, ry = 0, sx = 1, sy = 1, sz = 1) => {
       parts.push(place(paint(geo, hex), x, y, z, ry, sx, sy, sz));
     };
+    const GREENS = [0x2f7a2a, 0x3a8a33, 0x2a6b25, 0x357a2e, 0x2e6b28];
     const tree = (x, z, s) => {
+      // Pinus berlapis 2-4 tingkat + batang, lebar/tinggi/warna bervariasi
+      // (bukan kerucut seragam); 30% berdaun lebar (tajuk bulat) supaya
+      // siluet pepohonan bervariasi.
       add(cyl(0.14 * s, 1.1 * s), 0x6b4a2f, x, 0.55 * s, z);
-      add(cone(0.85 * s, 1.7 * s), 0x2f7a2a, x, 1.8 * s, z);
-      add(cone(0.6 * s, 1.3 * s), 0x3a8a33, x, 2.7 * s, z);
-      add(cone(0.38 * s, 0.9 * s), 0x2a6b25, x, 3.4 * s, z);
+      if (rnd() < 0.3) {
+        const g1 = GREENS[Math.floor(rnd() * GREENS.length)];
+        const g2 = GREENS[Math.floor(rnd() * GREENS.length)];
+        add(ball(0.85 * s), g1, x, 2.1 * s, z, 0, 1, 0.85, 1);
+        add(ball(0.6 * s), g2, x + 0.3 * s, 2.7 * s, z, 0, 1, 0.8, 1);
+        add(ball(0.45 * s), g1, x - 0.25 * s, 2.6 * s, z, 0, 1, 0.8, 1);
+        return;
+      }
+      const widths = [0.95, 0.72, 0.52, 0.36];
+      const heights = [1.8, 1.4, 1.1, 0.85];
+      let y = 1.15;
+      const layers = 2 + Math.floor(rnd() * 3); // 2-4 tingkat
+      for (let li = 0; li < layers; li += 1) {
+        const w = widths[li] * s * (0.9 + rnd() * 0.25);
+        const h = heights[li] * s * (0.9 + rnd() * 0.2);
+        const g = GREENS[Math.floor(rnd() * GREENS.length)];
+        add(cone(w, h), g, x + (rnd() - 0.5) * 0.16 * s, y + h / 2 - 0.15, z);
+        y += h * 0.55;
+      }
     };
     const bush = (x, z, s) => { add(ball(0.55 * s), 0x3a7a2e, x, 0.35 * s, z, 0, 1, 0.65, 1); };
     const flower = (x, z, hex) => {
@@ -120,7 +140,9 @@ export function createRenderer(canvas, templates) {
       add(ball(0.14), hex, x, 0.55, z);
     };
     const rock = (x, z, s) => { add(ball(0.4 * s), 0x8a8a84, x, 0.12 * s, z, 0, 1, 0.55, 0.8); };
-    const grassTuft = (x, z) => { add(cone(0.16, 0.55, 6), 0x4a8a35, x, 0.27, z); };
+    const grassTuft = (x, z, hex = 0x4a8a35) => { add(cone(0.16, 0.55, 6), hex, x, 0.27, z); };
+    // Bercak tanah: gundukan cokelat pipih di tepi trek.
+    const dirtPatch = (x, z, s) => { add(ball(0.9 * s), 0x8a6b42, x, 0.02, z, 0, 1, 0.12, 1); };
     const fenceRun = (x, z, ry) => {
       for (const dx of [-1.1, 0, 1.1]) add(box(0.12, 1.0, 0.12), 0x8a6b42, x + dx * Math.cos(ry), 0.5, z - dx * Math.sin(ry));
       add(box(2.4, 0.12, 0.08), 0x7a5c36, x, 0.78, z, ry);
@@ -150,7 +172,15 @@ export function createRenderer(canvas, templates) {
       const doorZ = side < 0 ? -18 : -4;
       add(box(0.4, 3.4, 2.2), 0x5d4028, x, 1.7, doorZ);
       add(box(0.42, 0.18, 2.4), 0x3a2a18, x, 3.5, doorZ);
-      add(box(0.42, 1.0, 1.2), 0xffc861, x, 4.4, -doorZ);
+      // Jendela hayloft: bingkai kayu + ambang supaya tidak mengambang.
+      // wx menonjol sedikit dari permukaan dinding ke arah trek.
+      const wx = x - side * 0.18;
+      add(box(0.1, 1.0, 1.2), 0xffc861, wx, 4.4, -doorZ);
+      add(box(0.12, 0.14, 1.5), 0x5d4028, wx, 5.0, -doorZ);
+      add(box(0.12, 0.14, 1.5), 0x5d4028, wx, 3.8, -doorZ);
+      add(box(0.12, 1.2, 0.14), 0x5d4028, wx, 4.4, -doorZ - 0.68);
+      add(box(0.12, 1.2, 0.14), 0x5d4028, wx, 4.4, -doorZ + 0.68);
+      add(box(0.16, 0.1, 1.6), 0x5d4028, wx, 3.68, -doorZ);
       // Lentera di tiang di depan dinding.
       add(cyl(0.06, 1.6), 0x3a2a18, side * 4.9, 0.8, doorZ + 3);
       add(box(0.3, 0.35, 0.3), 0xffc861, side * 4.9, 1.75, doorZ + 3);
@@ -209,7 +239,15 @@ export function createRenderer(canvas, templates) {
         }
       }
       // Awan: 1-2 gumpal per sisi per segmen (langit tidak kosong).
-      if (rnd() < 0.8) cloud(side * (6 + rnd() * 14), 15 + rnd() * 7, -8 - rnd() * 14, 1.2 + rnd() * 1.2);
+      const nCloud = 1 + (rnd() < 0.6 ? 1 : 0);
+      for (let ci = 0; ci < nCloud; ci += 1) {
+        if (rnd() < 0.85) cloud(side * (6 + rnd() * 14), 14 + rnd() * 9, -8 - rnd() * 14, 1.0 + rnd() * 1.6);
+      }
+      // Variasi tanah di semua zona: bercak tanah + rumpun rumput.
+      const dx = side * (5.8 + rnd() * 5.5);
+      const dz = 8 - rnd() * 34;
+      if (rnd() < 0.3) dirtPatch(dx, dz, 0.7 + rnd() * 0.9);
+      if (rnd() < 0.4) grassTuft(dx + (rnd() - 0.5) * 2, dz + (rnd() - 0.5) * 2, zoneIndex === 1 ? 0xc2a24a : 0x4a8a35);
     }
     const merged = mergeGeometries(parts, false);
     const mesh = new THREE.Mesh(merged, clusterMat);
@@ -247,6 +285,14 @@ export function createRenderer(canvas, templates) {
     applyClusters(zoneIndex);
   }
 
+  // Matahari hangat: cakram Basic (tanpa fog) yang mengikuti kamera — langit
+  // tidak pernah kosong dan cahaya terasa hangat di semua zona.
+  const sunDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(3.2, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false }),
+  );
+  scene.add(sunDisc);
+
   // ---- blob shadow (murah, tanpa shadow map)
   const blobGeo = new THREE.CircleGeometry(1, 20);
   const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
@@ -269,7 +315,7 @@ export function createRenderer(canvas, templates) {
     legR: turkey.getObjectByName('Turkey_Leg_R'),
     body: turkey.getObjectByName('Turkey_Body'),
   };
-  const turkeyBlob = makeBlob(0.7);
+  const turkeyBlob = makeBlob(0.85);
   const ghosts = [];
   // Ghost trail = 3 ellipsoid murah (1 draw call tiap hantu), BUKAN clone kalkun
   // utuh (19 mesh × 3 = 57 draw call — bottleneck terbesar di SwiftShader).
@@ -288,17 +334,42 @@ export function createRenderer(canvas, templates) {
   const trail = []; // riwayat posisi (x, y, z) untuk ghost trail
 
   // ---- petani Bram (mengejar dari belakang, di antara kamera dan kalkun)
-  // Skala 1,3: ancaman harus terbaca besar.
+  // Skala 1,15: ancaman harus terbaca besar, tapi topi tidak boleh mendominasi
+  // foreground (kamera juga dimundurkan — lihat bawah).
   const farmer = templates.farmer.clone();
-  farmer.scale.setScalar(1.3);
+  farmer.scale.setScalar(1.15);
   scene.add(farmer);
   const farmerParts = {
     armL: farmer.getObjectByName('Farmer_Arm_L'),
     armR: farmer.getObjectByName('Farmer_Arm_R'),
     legL: farmer.getObjectByName('Farmer_Leg_L'),
     legR: farmer.getObjectByName('Farmer_Leg_R'),
+    handL: farmer.getObjectByName('Farmer_Hand_L'),
+    handR: farmer.getObjectByName('Farmer_Hand_R'),
   };
   const farmerBlob = makeBlob(0.8);
+  // Posisi tangan istirahat (lokal grup petani): ujung bawah lengan.
+  const HAND_REST = { L: [-0.46, 0.93, -0.06], R: [0.46, 0.93, -0.06] };
+  // Tangan terangkat (lengan rotation.x = 1.15): ujung lengan yang terangkat.
+  const HAND_UP = { L: [-0.46, 1.07, -0.15], R: [0.46, 1.07, -0.15] };
+  function setHands(pose) {
+    const map = pose === 'up' ? HAND_UP : HAND_REST;
+    if (farmerParts.handL) farmerParts.handL.position.set(...map.L);
+    if (farmerParts.handR) farmerParts.handR.position.set(...map.R);
+  }
+
+  // Kilau tepi pisau: dua strip putih terang di sepanjang sisi bilah (anak
+  // dari template pisau — ikut ter-clone ke pool). Bilah .glb: 0,36 lebar (x),
+  // 1,30 tinggi (y), pusat y -1,15 dari pivot. Tanpa ini bilah terbaca
+  // seperti pelat abu-abu (cacat audit).
+  {
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (const sx of [-0.17, 0.17]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.28, 0.07), edgeMat);
+      edge.position.set(sx, -1.15, 0);
+      templates.knife.add(edge);
+    }
+  }
 
   // ---- pool rintangan (clone template .glb)
   // Nama kind world ('hay') vs nama file aset ('haystack') dipetakan di sini.
@@ -318,12 +389,16 @@ export function createRenderer(canvas, templates) {
   }
   // Balok gantungan pisau (satu per pisau) + tiang penyangga di kedua ujung
   // (balok tanpa tiang tampak melayang — cacat audit di shot slide v1).
+  // Balok lebih tebal + gelap + penopang diagonal: dari jauh tidak lagi
+  // terbaca seperti gawang kecil.
   const knifeBeams = [];
   const knifePosts = [];
+  const knifeBraces = [];
+  const knifeArcs = [];
   for (let i = 0; i < POOL.knife; i += 1) {
     const beam = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 0.18, 0.18),
-      new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.9 }),
+      new THREE.BoxGeometry(2.4, 0.26, 0.22),
+      new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.9 }),
     );
     beam.position.y = 3.05;
     beam.visible = false;
@@ -341,16 +416,45 @@ export function createRenderer(canvas, templates) {
       posts.push(post);
     }
     knifePosts.push(posts);
+    // Penopang diagonal balok->tiang (memecah siluet gawang).
+    const braces = [];
+    for (const s of [-1, 1]) {
+      const brace = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.85, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 0.95 }),
+      );
+      brace.rotation.z = -s * 0.6;
+      brace.visible = false;
+      scene.add(brace);
+      braces.push(brace);
+    }
+    knifeBraces.push(braces);
+    // Busur ayun (motion-blur): sektor tembus pandang yang disapu bilah
+    // (bilah menggantung ke -Y, mengayun +-0,55 rad -> sektor 238,5-301,5°).
+    const arc = new THREE.Mesh(
+      new THREE.RingGeometry(1.25, 1.95, 24, 1, Math.PI * 1.325, Math.PI * 0.35),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.16,
+        side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    arc.visible = false;
+    scene.add(arc);
+    knifeArcs.push(arc);
   }
 
   // ---- jagung: SATU InstancedMesh (1 draw call untuk semua jagung)
+  // Warna per-instance: jagung biasa kuning, jagung EMAS langka lebih besar
+  // + emas terang (material putih supaya setColorAt tampil murni).
+  const CORN_COLOR = new THREE.Color(0xe8a81a);
+  const GOLD_COLOR = new THREE.Color(0xffd700);
   const cornGeo = mergeGeometries([
     new THREE.CylinderGeometry(0.1, 0.1, 0.55, 10).translate(0, 0, 0),
     new THREE.ConeGeometry(0.08, 0.16, 10).translate(0, 0.35, 0),
   ]);
   const cornMesh = new THREE.InstancedMesh(
     cornGeo,
-    new THREE.MeshStandardMaterial({ color: 0xe8a81a, roughness: 0.7 }),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 }),
     CORN_MAX,
   );
   cornMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -372,8 +476,8 @@ export function createRenderer(canvas, templates) {
     }
   }
 
-  const camPos = new THREE.Vector3(0, 4.5, 7.0);
-  const camTarget = new THREE.Vector3(0, 4.5, 7.0);
+  const camPos = new THREE.Vector3(0, 5.3, 10.35);
+  const camTarget = new THREE.Vector3(0, 5.3, 10.35);
   const lookAt = new THREE.Vector3(0, 1.0, -10);
   const dummy = new THREE.Object3D();
   let lastZone = -1;
@@ -426,18 +530,18 @@ export function createRenderer(canvas, templates) {
       applyZone(state.zoneIndex);
     }
 
-    // Kalkun: posisi + squash & stretch + lari + slide. Skala dasar 1,2x
-    // (render saja, fisika sim tetap) supaya kalkun lebih besar di frame.
+    // Kalkun: posisi + squash & stretch + lari + slide. Skala dasar 1,6x
+    // (render saja, fisika sim tetap) supaya kalkun >=25% tinggi frame.
     const squash = p.squash;
     turkey.position.set(p.x, p.y, 0);
-    turkey.scale.set(1.2 * (1 - squash * 0.06), 1.2 * (1 + squash * 0.14), 1.2 * (1 - squash * 0.05));
+    turkey.scale.set(1.6 * (1 - squash * 0.06), 1.6 * (1 + squash * 0.14), 1.6 * (1 - squash * 0.05));
     // Set SEMUA komponen rotasi tiap frame: clone() GLB mengurai quaternion
     // Y-180 menjadi Euler (pi,0,pi); mengubah .x saja membalik kalkun
     // (bug audit: kalkun terbalik di bawah tanah, hanya kaki + bayangan terlihat).
     const tilt = p.sliding ? 0.3 : (p.grounded ? 0 : -0.12);
     turkey.rotation.set(tilt, Math.PI, 0);
     if (p.sliding) {
-      turkey.scale.y = 1.2 * 0.55;
+      turkey.scale.y = 1.6 * 0.55;
     }
     // Kedip saat invulnerable.
     turkey.visible = !(p.invulnerable > 0 && Math.floor(p.invulnerable * 10) % 2 === 0);
@@ -447,7 +551,9 @@ export function createRenderer(canvas, templates) {
     if (turkeyParts.wingR) turkeyParts.wingR.rotation.z = -0.2 - flap * 0.5;
     if (turkeyParts.legL) turkeyParts.legL.rotation.x = p.grounded ? Math.sin(phase * 2.2) * 0.6 : 0.4;
     if (turkeyParts.legR) turkeyParts.legR.rotation.x = p.grounded ? -Math.sin(phase * 2.2) * 0.6 : -0.3;
-    turkey.position.y = p.y + (p.grounded && !p.sliding ? Math.abs(Math.sin(phase * 2.2)) * 0.05 : 0);
+    // Saat slide, angkat sedikit (+0,1) supaya kaki tidak bertumpuk dengan
+    // topi Bram di belakang (nit audit) — bayangan blob tetap di tanah.
+    turkey.position.y = p.y + (p.sliding ? 0.1 : 0) + (p.grounded && !p.sliding ? Math.abs(Math.sin(phase * 2.2)) * 0.05 : 0);
     turkeyBlob.position.set(p.x, 0.03, 0);
     turkeyBlob.material.opacity = p.y > 0.1 ? Math.max(0.05, 0.28 - p.y * 0.1) : 0.28;
 
@@ -467,18 +573,43 @@ export function createRenderer(canvas, templates) {
     // Petani: JARAK VISUAL = 0,55 x gap sim (render saja — gap sim, HUD, dan
     // skor tidak berubah). Gap sim 9 m menaruh Bram DI BELAKANG kamera
     // (kamera z 7) sehingga ia tak pernah terlihat — cacat terbesar v1.
-    // Dengan faktor 0,55 Bram selalu 4,5 m di depan kamera: kepala sampai
+    // Dengan faktor 0,55 Bram selalu ~5 m di depan kamera: kepala sampai
     // lutut masuk frame bawah, kalkun tetap terlihat di atas bahunya. Saat
     // tertangkap ia bergegas mendekat (visualGap -> 1,0).
     const rawGap = state.caught ? Math.max(1.2, state.farmerGap - state.caughtT * 6) : state.farmerGap;
     const visualGap = Math.max(1.0, rawGap * 0.55);
     farmer.position.set(p.x * 0.85, 0, visualGap);
     farmer.visible = true;
+    // WAJAH BRAM: kamera selalu di belakangnya sehingga wajah tak pernah
+    // terlihat (cacat terbesar, penahan nilai). Saat tertangkap ia BERBALIK
+    // menghadap kamera, lengan terangkat meraih kalkun; saat taunt di title
+    // ia menghadap kamera dan melambai sambil lari di tempat. Lean-back
+    // -0,12 mengangkat wajah melewati tepi topi jerami dari kamera tinggi.
+    const facingCam = state.caught || state.farmerTaunt;
+    farmer.rotation.set(facingCam ? -0.12 : 0, facingCam ? 0 : Math.PI, 0);
     const fPhase = phase * 1.15;
-    if (farmerParts.armL) farmerParts.armL.rotation.x = 0.61 + Math.sin(fPhase * 2.2) * 0.5;
-    if (farmerParts.armR) farmerParts.armR.rotation.x = 0.61 - Math.sin(fPhase * 2.2) * 0.5;
-    if (farmerParts.legL) farmerParts.legL.rotation.x = Math.sin(fPhase * 2.2) * 0.55;
-    if (farmerParts.legR) farmerParts.legR.rotation.x = -Math.sin(fPhase * 2.2) * 0.55;
+    if (state.caught) {
+      // Pose menang: diam, kedua lengan terangkat meraih kalkun.
+      if (farmerParts.armL) farmerParts.armL.rotation.x = 1.15;
+      if (farmerParts.armR) farmerParts.armR.rotation.x = 1.15;
+      if (farmerParts.legL) farmerParts.legL.rotation.x = 0;
+      if (farmerParts.legR) farmerParts.legR.rotation.x = 0;
+      setHands('up');
+    } else if (state.farmerTaunt) {
+      // Melambai ke kamera sambil lari di tempat (kaki tetap mengayun).
+      if (farmerParts.armL) farmerParts.armL.rotation.x = 0.61 + Math.sin(fPhase * 2.2) * 0.5;
+      if (farmerParts.armR) farmerParts.armR.rotation.x = 1.35 + Math.sin(state.time * 6) * 0.25;
+      if (farmerParts.legL) farmerParts.legL.rotation.x = Math.sin(fPhase * 2.2) * 0.55;
+      if (farmerParts.legR) farmerParts.legR.rotation.x = -Math.sin(fPhase * 2.2) * 0.55;
+      setHands('rest');
+      if (farmerParts.handR) farmerParts.handR.position.set(...HAND_UP.R);
+    } else {
+      if (farmerParts.armL) farmerParts.armL.rotation.x = 0.61 + Math.sin(fPhase * 2.2) * 0.5;
+      if (farmerParts.armR) farmerParts.armR.rotation.x = 0.61 - Math.sin(fPhase * 2.2) * 0.5;
+      if (farmerParts.legL) farmerParts.legL.rotation.x = Math.sin(fPhase * 2.2) * 0.55;
+      if (farmerParts.legR) farmerParts.legR.rotation.x = -Math.sin(fPhase * 2.2) * 0.55;
+      setHands('rest');
+    }
     farmerBlob.position.set(farmer.position.x, 0.03, visualGap);
     farmerBlob.visible = farmer.visible;
 
@@ -504,6 +635,13 @@ export function createRenderer(canvas, templates) {
           post.visible = true;
           post.position.set(ob.x + (pi === 0 ? -1.2 : 1.2), 1.52, ob.z);
         }
+        for (let bi = 0; bi < 2; bi += 1) {
+          const brace = knifeBraces[slot][bi];
+          brace.visible = true;
+          brace.position.set(ob.x + (bi === 0 ? -0.98 : 0.98), 2.62, ob.z);
+        }
+        knifeArcs[slot].visible = true;
+        knifeArcs[slot].position.set(ob.x, 3.0, ob.z + 0.08);
         blob.visible = false;
       } else {
         mesh.position.set(ob.x, 0, ob.z);
@@ -518,37 +656,37 @@ export function createRenderer(canvas, templates) {
         if (kind === 'knife') {
           knifeBeams[i].visible = false;
           knifePosts[i].forEach((post) => { post.visible = false; });
+          knifeBraces[i].forEach((brace) => { brace.visible = false; });
+          knifeArcs[i].visible = false;
         }
       }
     }
 
-    // Jagung (InstancedMesh).
+    // Jagung (InstancedMesh). Emas: lebih besar + warna emas terang.
     let cornCount = 0;
     for (const corn of state.corns) {
       if (!corn.active || cornCount >= CORN_MAX) continue;
       dummy.position.set(corn.x, corn.y, corn.z);
       dummy.rotation.set(0, state.time * 1.5, 0);
-      dummy.scale.setScalar(1);
+      dummy.scale.setScalar(corn.golden ? 1.35 : 1);
       dummy.updateMatrix();
       cornMesh.setMatrixAt(cornCount, dummy.matrix);
+      cornMesh.setColorAt(cornCount, corn.golden ? GOLD_COLOR : CORN_COLOR);
       cornCount += 1;
     }
     cornMesh.count = cornCount;
     cornMesh.instanceMatrix.needsUpdate = true;
+    if (cornMesh.instanceColor) cornMesh.instanceColor.needsUpdate = true;
 
     // Kamera: follow eksponensial + deadzone + look-ahead, LATE update.
-    // Chase-cam TINGGI (y 4,8) dan MENGEKOR Bram: kamera 4,5 m di belakang
-    // Bram (z = visualGap + 4,5). y 3,2 (percobaan kedua) SALAH: Bram lebih
-    // tinggi dari kalkun dan menutupi kalkun sepenuhnya; y 5,5 (percobaan
-    // ketiga) membuat kalkun terlihat tapi Bram hanya topi + bahu. Geometri:
-    // kepala kalkun hanya di atas kepala Bram bila camY > 3,57 (dihitung dari
-    // tinggi kalkun 1,64 m, Bram 2,65 m, jarak 9,45/4,5 m). Dengan y 4,8
-    // kalkun utuh di atas kepala Bram DAN kepala + torso + lengan Bram masuk
-    // frame (kepala 25,5 derajat ke bawah, tepi bawah 37 derajat). Saat
-    // bahaya naik kamera mendekat + menunduk: semua membesar. FOV 52 (dari
-    // 58) supaya kalkun lebih besar tanpa memotong HUD.
+    // Chase-cam TINGGI (y 5,3) dan MENGEKOR Bram: kamera 5,4 m di belakang
+    // Bram (z = visualGap + 5,4). Mundur dari 4,5: topi Bram mengecil
+    // (dominasi topi = cacat fix round) sementara kalkun diperbesar lewat
+    // skala 1,6x + FOV 46 — kalkun >=25% tinggi frame, kaki kalkun bersih
+    // dari topi Bram (garis pandang kaki melewati 0,17 m di atas topi).
+    // Saat bahaya naik kamera mendekat + menunduk: semua membesar.
     const danger = Math.max(0, Math.min(1, (6 - state.farmerGap) / (6 - 4.2)));
-    camTarget.set(p.x * 0.55, 4.8 - danger * 0.3, visualGap + 4.5);
+    camTarget.set(p.x * 0.55, 5.3 - danger * 0.3, visualGap + 5.4);
     const rate = 7;
     const k = 1 - Math.exp(-rate * dt);
     camPos.lerp(camTarget, k);
@@ -559,12 +697,18 @@ export function createRenderer(canvas, templates) {
       camera.position.y += (Math.random() - 0.5) * shake * 0.7;
     }
     camera.lookAt(lookAt);
+    // Matahari mengikuti kamera (langit tidak pernah kosong). Posisi dihitung
+    // supaya cakram masuk frame: kamera menunduk ~12 derajat, jadi matahari
+    // di y 12 (bukan 27 — itu di atas tepi frame) dan 65 m di depan, 16 m
+    // ke kanan. Di atas atap lumbung (6 m) dari garis pandang kamera.
+    sunDisc.position.set(camPos.x + 16, 12, camPos.z - 65);
+    sunDisc.lookAt(camera.position);
 
     // HUD.
     if (screen === SCREEN_PLAY || screen === SCREEN_PAUSED) {
       setText(hud.score, 'score', `SKOR ${state.score}`);
       setText(hud.dist, 'dist', `${Math.floor(state.distance)} m`);
-      setText(hud.coins, 'coins', `🌽 ${state.coins}`);
+      setText(hud.coins, 'coins', state.comboMult > 1 ? `🌽 ${state.coins} ×${state.comboMult}` : `🌽 ${state.coins}`);
       setText(hud.hearts, 'hearts', '♥'.repeat(Math.max(0, state.lives)) + '♡'.repeat(Math.max(0, 3 - state.lives)));
       setText(hud.speed, 'speed', `${speed.toFixed(1)} m/s`);
       setText(hud.zone, 'zone', ZONES[state.zoneIndex].name);

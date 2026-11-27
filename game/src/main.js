@@ -3,7 +3,7 @@
 // ?seed=N = seed tetap. ?shot=start|play|slide|end (+&seed=N) men-stage scene itu
 // lalu set window.__shotReady untuk screenshot. ?bot=1 = autopilot memainkan
 // game lewat jalur aksi yang sama seperti keyboard (untuk verifikasi driver).
-import { BEST_KEY, STEP } from './config.js';
+import { BEST_KEY, STEP, ZONES } from './config.js';
 import { createRandom } from './random.js';
 import { createWorld, EVENT_CORN, EVENT_HIT, EVENT_LAND, EVENT_OVER, EVENT_ZONE } from './world.js';
 import { createInput } from './input.js';
@@ -50,6 +50,7 @@ function snapshot(world, screen) {
     screen, seed, time: +s.time.toFixed(2), distance: Math.floor(s.distance),
     speed: +s.speed.toFixed(2), score: s.score, coins: s.coins, lives: s.lives,
     farmerGap: +s.farmerGap.toFixed(2), zoneIndex: s.zoneIndex, caught: s.caught,
+    combo: s.combo, comboMult: s.comboMult, bonus: s.bonus,
     player: {
       lane: p.lane, x: +p.x.toFixed(2), y: +p.y.toFixed(2),
       grounded: p.grounded, sliding: p.sliding, invulnerable: +Math.max(0, p.invulnerable).toFixed(2),
@@ -73,6 +74,9 @@ async function boot() {
   let last = performance.now();
   let painted = 0;
   let stepCount = 0;
+  let attractT = 0; // jam attract mode (taunt Bram periodik)
+  let lastMilestone = 0; // kelipatan 250 m terakhir yang sudah dirayakan
+  let bannerTimer = 0;
 
   function perf() {
     if (frameTimes.length === 0) return { avg: 0, p95: 0, n: 0, drawCalls: 0, triangles: 0 };
@@ -90,9 +94,22 @@ async function boot() {
     status.textContent = message;
   }
 
+  // Banner tengah-layar (milestone + ganti zona): muncul 2,2 detik dengan
+  // transisi ease (CSS), tidak menutupi HUD atas.
+  function showBanner(text) {
+    const b = document.getElementById('banner');
+    b.textContent = text;
+    b.classList.add('show');
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => b.classList.remove('show'), 2200);
+  }
+
   function startGame() {
     world.reset();
     accumulator = 0;
+    attractT = 0;
+    lastMilestone = 0;
+    world.state.farmerTaunt = false;
     screen = SCREEN_PLAY;
     audio.unlock();
     audio.click();
@@ -136,7 +153,16 @@ async function boot() {
     }
     if (events & EVENT_CORN) audio.coin();
     if (events & EVENT_LAND) audio.land();
-    if (events & EVENT_ZONE) audio.zone();
+    if (events & EVENT_ZONE) {
+      audio.zone();
+      showBanner(`🏡 MEMASUKI ${ZONES[world.state.zoneIndex].name}`);
+    }
+    // Banner milestone tiap 250 m (hanya saat bermain, bukan attract).
+    const milestone = Math.floor(world.state.distance / 250);
+    if (milestone > lastMilestone && screen === SCREEN_PLAY && !world.state.caught) {
+      lastMilestone = milestone;
+      showBanner(`🎉 ${milestone * 250} m!`);
+    }
     if (events & EVENT_OVER && allowOver) endGame();
   }
 
@@ -157,15 +183,20 @@ async function boot() {
       if (actions.includes('confirm') || actions.includes('jump')) {
         startGame();
       } else {
-        // Attract mode: kalkun lari sendiri di belakang judul.
+        // Attract mode: kalkun lari sendiri di belakang judul. Bram
+        // periodik BERBALIK menghadap kamera + melambai (1,5 dtk tiap 6 dtk)
+        // — wajahnya terlihat di cover tanpa countdown yang merusak driver
+        // (driver menekan Enter dan mengharapkan layar play dalam 600 ms).
+        attractT += dt;
+        world.state.farmerTaunt = (attractT % 6) >= 3.5 && (attractT % 6) < 5.0;
         accumulator += dt;
         let guard = 0;
-        while (accumulator >= STEP && guard < 8) {
+        while (accumulator >= STEP && guard < 12) {
           stepWorld(autopilotAction(world.state, 0.7), false);
           accumulator -= STEP;
           guard += 1;
         }
-        if (guard >= 8) accumulator = 0;
+        if (guard >= 12) accumulator = 0;
         if (world.state.lives <= 0) world.reset(); // attract tidak pernah game over
       }
     } else if (screen === SCREEN_PLAY) {
@@ -178,7 +209,15 @@ async function boot() {
         accumulator += dt;
         let guard = 0;
         let first = true;
-        while (accumulator >= STEP && guard < 8) {
+        // Guard 12 langkah/frame (bukan 8): di frame lambat (SwiftShader
+        // headless ~160-240 ms) 8 langkah hanya mengizinkan 0,133 dtk sim —
+        // sim tertinggal dari real-time dan bot hanya menempuh ~340 m/45 dtk
+        // (driver menuntut >400 m). 12 langkah = 0,2 dtk sim/frame, sim
+        // mengejar real-time sampai frame 200 ms. Fisika tidak berubah
+        // (STEP tetap 1/60); di 60 fps guard tidak pernah mengikat (1
+        // langkah/frame). world.step murah (~aritmetika), jadi tidak ada
+        // spiral of death: render yang lambat, bukan sim.
+        while (accumulator >= STEP && guard < 12) {
           const stepInput = botMode
             ? autopilotAction(world.state, HORIZON_GOOD)
             : first ? applyStepInput(actions) : { move: 0, jump: false, slide: false };
@@ -187,7 +226,7 @@ async function boot() {
           guard += 1;
           first = false;
         }
-        if (guard >= 8) accumulator = 0;
+        if (guard >= 12) accumulator = 0;
       }
     } else if (screen === SCREEN_PAUSED) {
       if (actions.includes('pause') || actions.includes('confirm')) {

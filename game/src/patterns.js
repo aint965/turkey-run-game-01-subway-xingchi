@@ -67,12 +67,13 @@ export function generateRow(random, difficulty, stats) {
 export function generateCornLine(random, zStart, gapZ) {
   const lane = randomInt(random, LANE_COUNT);
   const arc = random() < 0.3; // 30%: garis melengkung ke atas (lompat untuk mengambil)
+  const golden = random() < 0.12; // 12%: satu garis jagung EMAS langka (nilai 5x)
   const count = 4 + randomInt(random, 3);
   const corns = [];
   for (let i = 0; i < count; i += 1) {
     const t = count === 1 ? 0 : i / (count - 1);
     const y = arc ? 0.7 + Math.sin(t * Math.PI) * 1.1 : 0.7;
-    corns.push({ lane, z: zStart - i * gapZ, y });
+    corns.push({ lane, z: zStart - i * gapZ, y, golden });
   }
   return corns;
 }

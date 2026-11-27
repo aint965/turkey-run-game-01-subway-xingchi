@@ -100,6 +100,13 @@ export function buildFarmerFallback() {
   box(g, 'Farmer_Apron', 0x3b5b8c, [0, 0.95, -0.33], [0.48, 0.62, 0.06]);
   ball(g, 'Farmer_Head', 0xe8b88a, [0, 1.66, -0.02], [0.23, 0.22, 0.23]);
   ball(g, 'Farmer_Beard', 0xe8dcc8, [0, 1.52, -0.16], [0.16, 0.1, 0.14]);
+  ball(g, 'Farmer_Nose', 0xe8b88a, [0, 1.66, -0.24], [0.05, 0.05, 0.05]);
+  // Mata besar (putih + pupil) — seirama .glb supaya wajah terbaca dari
+  // kamera chase yang tinggi, juga saat fallback dipakai.
+  ball(g, 'Farmer_EyeWhite_L', 0xffffff, [-0.09, 1.72, -0.215], [0.065, 0.05, 0.065]);
+  ball(g, 'Farmer_EyeWhite_R', 0xffffff, [0.09, 1.72, -0.215], [0.065, 0.05, 0.065]);
+  ball(g, 'Farmer_Eye_L', 0x1a1a1a, [-0.09, 1.72, -0.26], [0.032, 0.032, 0.032]);
+  ball(g, 'Farmer_Eye_R', 0x1a1a1a, [0.09, 1.72, -0.26], [0.032, 0.032, 0.032]);
   cyl(g, 'Farmer_HatBrim', 0xd9b45b, [0, 1.86, -0.02], [0.44, 0.04, 0.44]);
   ball(g, 'Farmer_HatTop', 0xd9b45b, [0, 1.88, -0.02], [0.24, 0.16, 0.24]);
   const armL = cyl(g, 'Farmer_Arm_L', 0x4a7c59, [-0.46, 1.18, -0.1], [0.1, 0.55, 0.1]);

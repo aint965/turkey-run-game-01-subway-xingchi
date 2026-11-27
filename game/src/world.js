@@ -42,7 +42,7 @@ export function createWorld(random) {
   }
   const corns = [];
   for (let i = 0; i < CORN_POOL; i += 1) {
-    corns.push({ active: false, lane: 1, x: 0, y: 0.7, z: 0 });
+    corns.push({ active: false, lane: 1, x: 0, y: 0.7, z: 0, golden: false });
   }
   const state = {
     player, obstacles, corns,
@@ -51,6 +51,9 @@ export function createWorld(random) {
     farmerGap: FARMER.gapStart, timeSinceHit: 99,
     zoneIndex: 0, hitStop: 0, caught: false, caughtT: 0,
     patternsSpawned: 0, patternsRejected: 0,
+    // Kombo jagung: beruntun tanpa kena hit -> pengali (8+ = x2, 16+ = x3).
+    // bonus = poin jagung terkumpul (skor = jarak + bonus).
+    combo: 0, comboMult: 1, bonus: 0,
   };
 
   let jumpBuffer = 0;
@@ -70,12 +73,15 @@ export function createWorld(random) {
     player.runPhase = 0;
     player.squash = 0;
     for (const ob of obstacles) { ob.active = false; ob.hit = false; }
-    for (const corn of corns) corn.active = false;
+    for (const corn of corns) { corn.active = false; corn.golden = false; }
     state.time = 0;
     state.distance = 0;
     state.speed = RUN.startSpeed;
     state.score = 0;
     state.coins = 0;
+    state.combo = 0;
+    state.comboMult = 1;
+    state.bonus = 0;
     state.lives = LIVES;
     state.farmerGap = FARMER.gapStart;
     state.timeSinceHit = 99;
@@ -131,6 +137,7 @@ export function createWorld(random) {
       corn.x = LANES[c.lane];
       corn.y = c.y;
       corn.z = c.z;
+      corn.golden = !!c.golden;
     }
   }
 
@@ -181,7 +188,7 @@ export function createWorld(random) {
     state.timeSinceHit += dt;
     state.distance += state.speed * dt;
     state.speed = Math.min(RUN.maxSpeed, RUN.startSpeed + state.distance * RUN.accelPerMeter);
-    state.score = Math.floor(state.distance) + state.coins * CORN_POINTS;
+    state.score = Math.floor(state.distance) + state.bonus;
 
     const zoneIndex = state.distance < ZONES[0].until ? 0
       : state.distance < ZONES[1].until ? 1 : 2;
@@ -269,6 +276,8 @@ export function createWorld(random) {
       if (!obstacleHits(ob)) continue;
       ob.hit = true;
       state.lives -= 1;
+      state.combo = 0; // kombo putus saat kena tabrakan
+      state.comboMult = 1;
       state.timeSinceHit = 0;
       state.farmerGap = Math.max(FARMER.gapMin, state.farmerGap - FARMER.hitCloser);
       state.hitStop = 0.09;
@@ -291,7 +300,12 @@ export function createWorld(random) {
       if (Math.abs(corn.y - (player.y + 0.7)) > 1.0) continue;
       corn.active = false;
       state.coins += 1;
-      state.score = Math.floor(state.distance) + state.coins * CORN_POINTS;
+      // Kombo: jagung beruntun tanpa kena hit menaikkan pengali (8+ = x2,
+      // 16+ = x3). Jagung emas langka = 5x nilai jagung biasa.
+      state.combo += 1;
+      state.comboMult = state.combo >= 16 ? 3 : state.combo >= 8 ? 2 : 1;
+      state.bonus += (corn.golden ? 5 * CORN_POINTS : CORN_POINTS) * state.comboMult;
+      state.score = Math.floor(state.distance) + state.bonus;
       events |= EVENT_CORN;
     }
 
