@@ -36,6 +36,15 @@
   #farmer-bar { height: 10px; background: #3a2a22; border-radius: 5px; margin-top: 6px; overflow: hidden; }
   #farmer-fill { height: 100%; width: 0%; background: #e5534b; border-radius: 5px; }
   #farmer-warn { color: #ff8a7a; display: none; margin-top: 4px; }
+  /* Panel game-over DIPERKECIL + dipindah ke kiri-bawah supaya scene
+     (kalkun + Bram yang menangkapnya, di tengah-bawah) tetap terlihat —
+     v1 menutupi hampir seluruh frame, lalu panel tengah-bawah menutupi Bram. */
+  #screen-over { align-items: flex-end; justify-content: flex-start; padding: 0 0 6vh 5vw; }
+  #screen-over .panel { max-width: 420px; padding: 14px 26px; background: rgba(26, 18, 16, 0.68); }
+  #screen-over .panel h2 { font-size: 32px; margin-bottom: 4px; }
+  #screen-over .panel p { font-size: 17px; margin: 5px 0; }
+  #screen-over .panel .big { font-size: 19px; }
+  #screen-over .panel .prompt { margin-top: 10px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }

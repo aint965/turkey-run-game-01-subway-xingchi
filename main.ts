@@ -7,7 +7,8 @@
 //
 // Berbeda dari starter: sebelum menyalin, program ini MEMVALIDASI isi
 // (screenshot harus 3-4 file JPEG/PNG, masing-masing <= 256 KiB; game/
-// harus punya index.html; game/ tidak boleh melewati cap file/byte scorer),
+// harus punya index.html; game/ tidak boleh melewati cap file/byte scorer;
+// setiap .glb di game/assets/ harus ber-magic 'glTF' dan tidak kosong),
 // menghapus isi screenshots/ lama di output supaya file basi tidak bocor,
 // dan mencetak laporan ukuran — jadi build yang lolos di sini sudah
 // memenuhi gate yang akan dipakai scorer (lihat reference/gate.json).
@@ -78,6 +79,27 @@ for (const file of gameFiles) {
 }
 if (gameBytes > CAPS.game_max_bytes) fail(`game/ ${gameBytes} byte > 48 MiB`);
 
+// --- Validasi 3: setiap .glb di game/assets/ harus file GLB utuh (magic 'glTF',
+// versi 2) dan tidak kosong — aset korup akan membuat game jalan dengan
+// fallback prosedural tanpa ketahuan di sini.
+const glbFiles = gameFiles.filter((f) => f.startsWith('assets/') && f.endsWith('.glb'));
+if (glbFiles.length === 0) fail('game/assets/ tidak berisi .glb');
+let glbBytes = 0;
+for (const file of glbFiles) {
+  const full = join(gameDir, file);
+  const size = statSync(full).size;
+  if (size < 20) fail(`game/${file} terlalu kecil (${size} byte)`);
+  const head = readFileSync(full).subarray(0, 12);
+  const magic = String.fromCharCode(head[0], head[1], head[2], head[3]);
+  const version = head.readUInt32LE(4);
+  if (magic !== 'glTF' || version !== 2) fail(`game/${file} bukan GLB v2 (magic=${magic} version=${version})`);
+  // Integritas: field panjang total di header harus sama dengan ukuran file —
+  // file terpotong saat unduh/export akan ketahuan di sini, bukan di game.
+  const declaredLength = head.readUInt32LE(8);
+  if (declaredLength !== size) fail(`game/${file} panjang header ${declaredLength} != ukuran file ${size}`);
+  glbBytes += size;
+}
+
 // --- Salin (hapus screenshots/ lama di output supaya file basi tidak bocor).
 mkdirSync(out, { recursive: true });
 cpSync(gameDir, join(out, 'game'), { recursive: true });
@@ -99,7 +121,7 @@ writeFileSync(
 
 const dossierBytes = statSync(join(out, 'dossier.json')).size;
 
-// --- Verifikasi 3: dossier yang ditulis harus parse + cocok dengan yang disalin
+// --- Verifikasi 4: dossier yang ditulis harus parse + cocok dengan yang disalin
 // (jumlah screenshot + file game). Kalau library berubah perilakunya, build
 // gagal di sini, bukan diam-diam menghasilkan dossier yang salah.
 const dossier = JSON.parse(readFileSync(join(out, 'dossier.json'), 'utf8'));
@@ -109,6 +131,7 @@ if (dossierShots !== null && dossierShots !== shots.length) {
 }
 const cover = shots[0];
 console.log(
-  `kalkun-kabur: game ${gameFiles.length} file / ${gameBytes} byte, ` +
+  `kalkun-kabur: game ${gameFiles.length} file / ${gameBytes} byte ` +
+  `(aset .glb ${glbFiles.length} file / ${glbBytes} byte), ` +
   `screenshots ${shots.length} file / ${shotsBytes} byte (cover: ${cover}), dossier ${dossierBytes} byte -> ${out}`,
 );

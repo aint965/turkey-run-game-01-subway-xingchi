@@ -164,12 +164,15 @@ def build_turkey():
     m_body = mat("M_TurkeyBody", BROWN, 0.9)
     m_belly = mat("M_TurkeyBelly", BROWN_LIGHT, 0.9)
     m_head = mat("M_TurkeyHead", CREAM, 0.8)
-    m_beak = mat("M_TurkeyBeak", ORANGE, 0.7)
+    # Paruh + kaki + telapak SATU material (warna ORANGE sama persis) — 10 -> 9
+    # material tanpa perubahan visual apa pun (fix round: kurangi material).
+    m_orange = mat("M_TurkeyOrange", ORANGE, 0.7)
+    m_beak = m_orange
     m_wattle = mat("M_TurkeyWattle", RED, 0.7)
     m_tail_a = mat("M_TurkeyTailA", (0.63, 0.32, 0.18), 0.9)
     m_tail_b = mat("M_TurkeyTailB", (0.91, 0.64, 0.24), 0.9)
     m_wing = mat("M_TurkeyWing", BROWN_DARK, 0.9)
-    m_leg = mat("M_TurkeyLeg", ORANGE, 0.8)
+    m_leg = m_orange
     m_eye = mat("M_TurkeyEye", DARK, 0.4)
     o = []
     # Badan: ellipsoid, pusat z 0.62; depan -Y.

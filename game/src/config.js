@@ -46,8 +46,10 @@ export const CORN_POINTS = 25;
 /** Zona makin sulit: halaman peternakan -> lumbung -> dapur. */
 export const ZONES = [
   { until: 300, name: 'HALAMAN PETERNAKAN', ground: 0x7fae4e, side: 0x5d8a3a, sky: 0x9fd4e8, fog: 0xa8d8ea },
-  { until: 700, name: 'LUMBUNG', ground: 0xc2a15e, side: 0x8a6b3a, sky: 0xe8c98f, fog: 0xe0c188 },
-  { until: Infinity, name: 'DAPUR', ground: 0xb8b0a4, side: 0x7a6a58, sky: 0xf2d8a0, fog: 0xe8d5a8 },
+  // LUMBUNG: lantai kayu gelap + langit amber hangat (bukan tan gurun) + dinding
+  // lumbung di render — zona harus terbaca sebagai lumbung, bukan gurun.
+  { until: 700, name: 'LUMBUNG', ground: 0x7d5a38, side: 0x5d4028, sky: 0xe0aa6e, fog: 0xd9a86c },
+  { until: Infinity, name: 'DAPUR', ground: 0xa89a86, side: 0x7a6a58, sky: 0xf2d8a0, fog: 0xe8d5a8 },
 ];
 
 export const PALETTE = {

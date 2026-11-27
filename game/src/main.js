@@ -212,10 +212,14 @@ async function boot() {
     screen = scene.screen;
     best = Math.max(best, scene.best);
     renderer.setPixelRatio(1); // dossier tajam 1280x720 (game biasa pakai 0,5 di headless)
+    // Kamera chase mengejar target secara eksponensial (rate 7) — butuh ~40
+    // frame untuk konvergen dari posisi awal (0, 4.5, 7.0) ke target
+    // (visualGap + 4,5). Dengan 3 frame (v1) kamera masih di posisi awal dan
+    // Bram tampak hanya topinya di tepi bawah. World diam selama staging.
     function paint() {
       renderer.draw(world.state, screen, best, STEP, null);
       painted += 1;
-      if (painted < 3) requestAnimationFrame(paint);
+      if (painted < 40) requestAnimationFrame(paint);
       else window.__shotReady = true;
     }
     requestAnimationFrame(paint);

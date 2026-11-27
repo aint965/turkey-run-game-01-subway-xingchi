@@ -22,9 +22,13 @@ export function autopilotAction(state, horizonSeconds) {
   const lanes = [0, 1, 2];
 
   // Rintangan terdekat di tiap jalur (z negatif = di depan, mendekat).
+  // Jendela tabrakan world adalah |z| <= 1,1 — rintangan yang BARU LEWAT z=0
+  // (z 0..1,2) masih bisa menabrak bila pemain pindah jalur ke x-nya, jadi
+  // JANGAN dibuang (bug audit: pilot pindah ke jalur yang pagarnya baru lewat
+  // z=0 lalu tertabrak saat x masih mengejar — 2 dari 20 seed mati karenanya).
   const nearest = [null, null, null];
   for (const ob of state.obstacles) {
-    if (!ob.active || ob.hit || ob.z > 0 || ob.z < -ahead - 12) continue;
+    if (!ob.active || ob.hit || ob.z > 1.2 || ob.z < -ahead - 12) continue;
     if (nearest[ob.lane] === null || ob.z > nearest[ob.lane].z) nearest[ob.lane] = ob;
   }
   // Jagung terdekat per jalur.
@@ -39,9 +43,10 @@ export function autopilotAction(state, horizonSeconds) {
 
   // Daftar rintangan per jalur, terurut dari terdekat (untuk melihat melewati
   // rintangan pertama — mis. oven yang bersembunyi di belakang pagar).
+  // Sama seperti nearest: sertakan z sampai +1,2 (jendela tabrakan world).
   const byLane = [[], [], []];
   for (const ob of state.obstacles) {
-    if (!ob.active || ob.hit || ob.z > 0 || ob.z < -45) continue;
+    if (!ob.active || ob.hit || ob.z > 1.2 || ob.z < -45) continue;
     byLane[ob.lane].push(ob);
   }
   for (const lane of lanes) byLane[lane].sort((a, b) => b.z - a.z);
@@ -56,6 +61,28 @@ export function autopilotAction(state, horizonSeconds) {
   /** Skor keamanan jalur: oven jauh lebih penting daripada pagar/pisau. */
   function laneScore(lane) {
     return ovenDist(lane) * 2 + anyDist(lane);
+  }
+
+  // 0) Jaring pengaman transit: rintangan di jalur x AKTUAL pemain (bukan
+  // lane tercatat — lane berubah instan saat pindah, x mengejar eksponensial)
+  // yang sudah di dalam jendela tabrakan. Tanpa ini pilot mati saat x masih
+  // menyeberang jalur pagar/oven (bug audit: 3 dari 20 seed).
+  for (const ob of state.obstacles) {
+    if (!ob.active || ob.hit || Math.abs(ob.z) > 1.2) continue;
+    const half = ob.kind === 'oven' ? 1.2 : ob.kind === 'hay' ? 1.3 : ob.kind === 'knife' ? 1.0 : 1.05;
+    if (Math.abs(ob.x - p.x) >= half) continue;
+    if (ob.kind === 'fence' || ob.kind === 'hay') {
+      if (p.grounded && p.y < 0.5) return { move: 0, jump: true, slide: false };
+      if (!p.grounded) return { move: 0, jump: true, slide: false };
+    }
+    if (ob.kind === 'knife' && !p.sliding) return { move: 0, jump: false, slide: true };
+    if (ob.kind === 'oven') {
+      // Sudah terlambat untuk jalur ini — coba kabur ke jalur sebelah yang bebas.
+      for (const lane of lanes) {
+        if (lane === p.lane) continue;
+        if (anyDist(lane) > 12) return { move: Math.sign(lane - p.lane), jump: false, slide: false };
+      }
+    }
   }
 
   // 1) Ancaman di jalur sendiri: lompat / slide / pindah jalur.
@@ -103,6 +130,20 @@ export function autopilotAction(state, horizonSeconds) {
       }
     }
     if (threat.kind === 'knife' && threatDist < speed * 0.45) {
+      // Jangan slide buta: oven di belakang pisau di jalur yang sama akan
+      // menabrak saat slide selesai (bug audit: 2 dari 20 seed mati begini).
+      // Kalau ada oven < 40 m di jalur ini, pindah jalur dulu bila ada yang aman.
+      if (ovenDist(p.lane) < 40) {
+        let bestLane = -1;
+        let bestScore = -Infinity;
+        for (const lane of lanes) {
+          if (lane === p.lane) continue;
+          if (ovenDist(lane) < 25) continue;
+          const score = laneScore(lane);
+          if (score > bestScore) { bestScore = score; bestLane = lane; }
+        }
+        if (bestLane >= 0) return { move: Math.sign(bestLane - p.lane), jump: false, slide: false };
+      }
       return { move: 0, jump: false, slide: true };
     }
     // Ancaman masih jauh: bila jalur lain bebas + ada jagung, pindah lebih awal.
