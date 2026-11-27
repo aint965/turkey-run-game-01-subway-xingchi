@@ -21,6 +21,14 @@ function el(id) {
 
 export function createRenderer(canvas, templates) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  // TONE MAPPING — DIUKUR: ACESFilmic (run 1-2 ronde ini) menaikkan renderMs
+  // 15,69 -> 36,47 ms di SwiftShader VM ini (kurva ACES per-fragmen di
+  // rasterizer CPU terlalu mahal; di GPU asli biayanya ~0). Ambang driver
+  // 16 ms keras, jadi ACES dimatikan (NoToneMapping) — tampilan PBR tetap
+  // hidup dari envMap logam + roughness/metalness .glb + sRGB output.
+  // Bila suatu hari driver diukur di GPU, ACES bisa dihidupkan lagi.
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   // Resolusi adaptif: di browser otomatis (webdriver/headless, mis. SwiftShader)
   // present canvas 1280x720 per frame menelan ~80 ms di luar render() — turunkan
   // backing store ke 0,5 supaya sim jalan real-time; di desktop GPU tetap 1.
@@ -36,6 +44,42 @@ export function createRenderer(canvas, templates) {
   const sun = new THREE.DirectionalLight(0xffe8b0, 1.75);
   sun.position.set(6, 12, 6);
   scene.add(sun);
+  // ENVIRONMENT PBR (tanpa file eksternal): gradien langit game (biru atas,
+  // horizon hangat, tanah bawah) + blob matahari, di-PMREM jadi environment
+  // map — logam (pisau metallic 1,0, besi oven 0,8) punya sesuatu untuk
+  // dipantulkan. Tanpa ini metalness tinggi = hitam (cacat lama bilah pisau).
+  // Kanvas kecil (128x64): env hanya butuh arah + warna kasar, bukan detail.
+  // TRADE-OFF PERFORMA (diukur driver run 1: scene.environment di SEMUA
+  // material menaikkan renderMs 15,69 -> 44,82 ms di SwiftShader VM ini —
+  // env sampling per-fragmen di seluruh layar terlalu mahal). Karena itu env
+  // TIDAK dipasang sebagai scene.environment; hanya material LOGAM yang
+  // diberi envMap langsung (lihat blok "Env HANYA untuk logam" di bawah) —
+  // pisau tetap berkilau, renderMs kembali ke ambang.
+  const envTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0, '#7fb8d8');
+    grad.addColorStop(0.45, '#cfe8f0');
+    grad.addColorStop(0.55, '#e8d9a8');
+    grad.addColorStop(1, '#5d7a3a');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 64);
+    const sunBlob = g.createRadialGradient(96, 20, 2, 96, 20, 14);
+    sunBlob.addColorStop(0, 'rgba(255,244,200,1)');
+    sunBlob.addColorStop(1, 'rgba(255,244,200,0)');
+    g.fillStyle = sunBlob;
+    g.fillRect(0, 0, 128, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const rt = pmrem.fromEquirectangular(tex);
+    tex.dispose();
+    pmrem.dispose();
+    return rt.texture;
+  })();
   // Bayangan NYATA (satu directional light, resep skill materials-lighting):
   // shadow map 512 mengikuti pemain, bias + normalBias melawan acne.
   // Ini yang paling mengubah kesan "plastik" jadi nyata — kalkun, Bram,
@@ -83,9 +127,10 @@ export function createRenderer(canvas, templates) {
   }
 
   // ---- trek: segmen tanah yang didaur ulang (bergerak maju, lompat ke belakang)
-  const groundMat = new THREE.MeshStandardMaterial({ color: ZONES[0].ground, roughness: 1 });
-  const trackMat = new THREE.MeshStandardMaterial({ color: 0x9a7b4f, roughness: 1 });
-  const wornMat = new THREE.MeshStandardMaterial({ color: 0xa8845a, roughness: 1 });
+  // PBR eksplisit: tanah/jalur tanah roughness 1, metallic 0 (bukan Lambert).
+  const groundMat = new THREE.MeshStandardMaterial({ color: ZONES[0].ground, roughness: 1, metalness: 0 });
+  const trackMat = new THREE.MeshStandardMaterial({ color: 0x9a7b4f, roughness: 1, metalness: 0 });
+  const wornMat = new THREE.MeshStandardMaterial({ color: 0xa8845a, roughness: 1, metalness: 0 });
   const dashMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
   const segments = [];
   for (let i = 0; i < SEG_COUNT; i += 1) {
@@ -122,7 +167,7 @@ export function createRenderer(canvas, templates) {
   // Menggantikan sistem lama (1 prop per holder — hamparan kosong di mana-mana).
   // Deterministik per segmen (mulberry32 dari nomor segmen + zona) supaya daur
   // ulang segmen tidak mengacak tata letak.
-  const clusterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  const clusterMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
   // Awan: material BASIC (tanpa cahaya) supaya tidak gelap saat dilihat dari
   // bawah — sisi bawah awan diterangi warna tanah hemisphere (gelap di zona
   // lumbung) bila pakai Standard. Mesh terpisah per segmen, tetap 1 draw call.
@@ -429,6 +474,9 @@ export function createRenderer(canvas, templates) {
     legR: farmer.getObjectByName('Farmer_Leg_R'),
     handL: farmer.getObjectByName('Farmer_Hand_L'),
     handR: farmer.getObjectByName('Farmer_Hand_R'),
+    // Pivot leher dari GLB remodel (Farmer_HeadPivot): kepala + mata +
+    // jenggot + topi satu grup — baru di ronde ini kepala bisa menoleh.
+    headPivot: farmer.getObjectByName('Farmer_HeadPivot'),
   };
   const farmerBlob = makeBlob(0.8);
   // Posisi tangan istirahat (lokal grup petani): ujung bawah lengan.
@@ -453,24 +501,33 @@ export function createRenderer(canvas, templates) {
       templates.knife.add(edge);
     }
   }
-  // Material NYATA (bukan plastik matte): bilah pisau logam berkilau,
-  // badan oven besi gelap, gagang oven baja, api oven membara.
-  // Diubah di TEMPLATE sebelum pool meng-clone — semua clone ikut.
+  // Material PBR NYATA kini tinggal di .glb (Blender Principled -> glTF):
+  // bilah pisau metallic 1,0 / roughness 0,25, besi oven 0,8 / 0,5, api
+  // oven emissive — JANGAN di-override di sini lagi (override lama adalah
+  // alasan bilah sempat gelap: metalness tanpa env-map). Yang tersisa di
+  // bawah ini hanya geometri (strip kilau tepi pisau), bukan material.
   {
-    const blade = templates.knife.getObjectByName('Knife_Blade');
-    if (blade && blade.material) Object.assign(blade.material, { color: 0xd8dce2, metalness: 0.85, roughness: 0.25 });
-    const tip = templates.knife.getObjectByName('Knife_Tip');
-    if (tip && tip.material) Object.assign(tip.material, { color: 0xc8ccd4, metalness: 0.85, roughness: 0.3 });
-    const ring = templates.knife.getObjectByName('Knife_Ring');
-    if (ring && ring.material) Object.assign(ring.material, { metalness: 0.6, roughness: 0.4 });
-    const ovenBody = templates.oven.getObjectByName('Oven_Body');
-    if (ovenBody && ovenBody.material) Object.assign(ovenBody.material, { metalness: 0.55, roughness: 0.45 });
-    const ovenHandle = templates.oven.getObjectByName('Oven_Handle');
-    if (ovenHandle && ovenHandle.material) Object.assign(ovenHandle.material, { metalness: 0.8, roughness: 0.3 });
-    const ovenFire = templates.oven.getObjectByName('Oven_Fire');
-    if (ovenFire && ovenFire.material) {
-      ovenFire.material.emissive.setHex(0xff5500);
-      ovenFire.material.emissiveIntensity = 1.4;
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (const sx of [-0.17, 0.17]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.035, 1.28, 0.07), edgeMat);
+      edge.position.set(sx, -1.15, 0);
+      templates.knife.add(edge);
+    }
+  }
+  // Env HANYA untuk logam: bilah + ujung pisau + badan/gagang oven mendapat
+  // envMap langsung (material yang sama dipakai semua clone pool). Material
+  // organik (metalness 0) tidak butuh env — ini yang menjaga renderMs di
+  // bawah ambang setelah scene.environment penuh terbukti terlalu mahal.
+  for (const [template, names] of [
+    [templates.knife, ['Knife_Blade', 'Knife_Tip']],
+    [templates.oven, ['Oven_Body', 'Oven_Handle']],
+  ]) {
+    for (const name of names) {
+      const mesh = template.getObjectByName(name);
+      if (mesh && mesh.material) {
+        mesh.material.envMap = envTex;
+        mesh.material.envMapIntensity = 1.0;
+      }
     }
   }
 
@@ -494,7 +551,7 @@ export function createRenderer(canvas, templates) {
   // Balok gantungan pisau (satu per pisau) + tiang penyangga di kedua ujung
   // (balok tanpa tiang tampak melayang — cacat audit di shot slide v1).
   // Balok lebih tebal + gelap + penopang diagonal: dari jauh tidak lagi
-  // terbaca seperti gawang kecil.
+  // terbaca seperti gawang kecil. PBR: kayu roughness 0,7, metallic 0.
   const knifeBeams = [];
   const knifePosts = [];
   const knifeBraces = [];
@@ -502,7 +559,7 @@ export function createRenderer(canvas, templates) {
   for (let i = 0; i < POOL.knife; i += 1) {
     const beam = new THREE.Mesh(
       new THREE.BoxGeometry(2.4, 0.32, 0.24),
-      new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.7, metalness: 0 }),
     );
     beam.position.y = 3.05;
     beam.visible = false;
@@ -513,7 +570,7 @@ export function createRenderer(canvas, templates) {
     for (const side of [-1.2, 1.2]) {
       const post = new THREE.Mesh(
         new THREE.BoxGeometry(0.18, 3.05, 0.18),
-        new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 0.95 }),
+        new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 0.7, metalness: 0 }),
       );
       post.position.y = 1.52;
       post.visible = false;
@@ -527,7 +584,7 @@ export function createRenderer(canvas, templates) {
     for (const s of [-1, 1]) {
       const brace = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 0.85, 0.12),
-        new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 0.95 }),
+        new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 0.7, metalness: 0 }),
       );
       brace.rotation.z = -s * 0.6;
       brace.visible = false;
@@ -563,7 +620,7 @@ export function createRenderer(canvas, templates) {
   ]);
   const cornMesh = new THREE.InstancedMesh(
     cornGeo,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 }),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0 }),
     CORN_MAX,
   );
   cornMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -599,6 +656,8 @@ export function createRenderer(canvas, templates) {
   const dummy = new THREE.Object3D();
   let lastZone = -1;
   let trauma = 0;
+  // Sudut menoleh kepala Bram (radian) — di-ease tiap frame menuju target.
+  let headYaw = 0;
   let renderMsTotal = 0;
   let renderMsCount = 0;
 
@@ -708,6 +767,21 @@ export function createRenderer(canvas, templates) {
     // Condong ke depan saat berlari (postur mengejar yang nyata); saat
     // menghadap kamera ia menegak + lean-back -0,12 seperti sebelumnya.
     farmer.rotation.set(facingCam ? -0.12 : 0.06, facingCam ? 0 : Math.PI, 0);
+    // Bram MELIRIK ke belakang saat bahaya tinggi (gap < 6 m): kepala
+    // menoleh ±46° perlahan (sinus 0,9 rad/dtk, di-ease rate 3/dtk) + miring
+    // sedikit mengikuti arah tolehan (0,25×) — "dia mengawasimu". Badan tetap
+    // lari. Saat tertangkap/taunt target 0 (badan sudah menghadap kamera).
+    // REVISI probe: ±31° TANPA miring tidak terbaca dari kamera chase —
+    // belakang kepala + topi terlalu simetris. ±46° + miring baru membuat
+    // profil wajah (hidung/jenggot) mengintip dari sisi kepala.
+    // Aman: murni visual, sim tidak berubah.
+    const glanceTarget = (state.farmerGap < 6.0 && !state.caught && !state.farmerTaunt)
+      ? Math.sin(state.time * 0.9) * 0.8 : 0;
+    headYaw += (glanceTarget - headYaw) * (1 - Math.exp(-3 * dt));
+    if (farmerParts.headPivot) {
+      farmerParts.headPivot.rotation.y = headYaw;
+      farmerParts.headPivot.rotation.z = headYaw * 0.25;
+    }
     const fPhase = phase * 1.15;
     if (state.caught) {
       // Pose menang: diam, kedua lengan terangkat meraih kalkun.

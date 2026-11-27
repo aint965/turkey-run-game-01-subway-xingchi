@@ -17,21 +17,23 @@ OUTDIR = argv[0] if argv else os.path.expanduser(
 os.makedirs(OUTDIR, exist_ok=True)
 
 # ---------------------------------------------------------------- helpers
-def principal(mat, rgb, rough=0.85, emission=None, emission_strength=0.0):
-    """Set base color pada node Principled (dicari by type, bukan by name)."""
+def principal(mat, rgb, rough=0.85, emission=None, emission_strength=0.0, metallic=0.0):
+    """Set base color pada node Principled (dicari by type, bukan by name).
+    PBR: metallic + roughness ikut ter-export ke glTF (metallicRoughness)."""
     mat.use_nodes = True
     bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
     bsdf.inputs["Roughness"].default_value = rough
+    bsdf.inputs["Metallic"].default_value = metallic
     if emission is not None:
         bsdf.inputs["Emission Color"].default_value = (*emission, 1.0)
         bsdf.inputs["Emission Strength"].default_value = emission_strength
     return mat
 
 
-def mat(name, rgb, rough=0.85, emission=None, emission_strength=0.0):
+def mat(name, rgb, rough=0.85, emission=None, emission_strength=0.0, metallic=0.0):
     m = bpy.data.materials.new(name=name)
-    return principal(m, rgb, rough, emission, emission_strength)
+    return principal(m, rgb, rough, emission, emission_strength, metallic)
 
 
 def apply_trs(ob):
@@ -120,7 +122,9 @@ def export_asset(asset_name, objects):
         filepath=path, export_format="GLB", use_selection=True,
         export_apply=True, export_yup=True)
     total_tris = sum(tris_of(o) for o in objects if o.type == "MESH")
-    mats = sorted({m.name for o in objects for m in o.data.materials if m})
+    # o.data None untuk Empty (pivot/root) — jangan sentuh .materials-nya.
+    mats = sorted({m.name for o in objects if o.data is not None
+                   for m in o.data.materials if m})
     dims = [round(v, 3) for o in objects for v in o.dimensions]
     minz = min((o.matrix_world.translation.z - o.dimensions.z / 2.0)
                for o in objects if o.type == "MESH")
@@ -255,11 +259,12 @@ def build_farmer():
 # ---------------------------------------------------------------- (c) rintangan
 def build_oven():
     clear_scene()
-    m_iron = mat("M_OvenIron", IRON, 0.7)
-    m_door = mat("M_OvenDoor", (0.42, 0.29, 0.18), 0.7)
+    # PBR: besi oven metallic 0,8 / roughness 0,5; gagang baja 0,8 / 0,3.
+    m_iron = mat("M_OvenIron", IRON, 0.5, metallic=0.8)
+    m_door = mat("M_OvenDoor", (0.42, 0.29, 0.18), 0.7, metallic=0.3)
     m_fire = mat("M_OvenFire", (0.20, 0.05, 0.01), 0.6,
                  emission=FIRE, emission_strength=2.0)
-    m_handle = mat("M_OvenHandle", SILVER, 0.4)
+    m_handle = mat("M_OvenHandle", SILVER, 0.3, metallic=0.8)
     o = []
     o.append(cube("Oven_Body", (0, 0, 0.95), (1.60, 1.20, 1.90), m_iron))
     # Pintu di depan (-Y, menghadap pemain yang datang).
@@ -276,8 +281,9 @@ def build_oven():
 
 def build_fence():
     clear_scene()
-    m_wood = mat("M_FenceWood", WOOD, 0.95)
-    m_wood2 = mat("M_FenceWoodDark", WOOD_DARK, 0.95)
+    # PBR: kayu roughness 0,7 (bukan 0,95 — kayu matte total tidak memantul).
+    m_wood = mat("M_FenceWood", WOOD, 0.7)
+    m_wood2 = mat("M_FenceWoodDark", WOOD_DARK, 0.7)
     o = []
     for i, x in enumerate((-1.10, 0.0, 1.10)):
         o.append(cube("Fence_Post_%d" % (i + 1), (x, 0, 0.50), (0.12, 0.12, 1.00), m_wood))
@@ -291,8 +297,10 @@ def build_fence():
 def build_knife():
     # Pisau ukir BERAYUN: origin = pivot gantungan di atas, bilah menggantung ke -Z.
     # (Pengecualian ground_z: prop gantung, min_z negatif disengaja.)
+    # PBR: bilah logam metallic 1,0 / roughness 0,25 — HARUS BERKILAU (dengan
+    # environment map di game); tanpa env, metalness tinggi = hitam.
     clear_scene()
-    m_blade = mat("M_KnifeBlade", SILVER, 0.35)
+    m_blade = mat("M_KnifeBlade", SILVER, 0.25, metallic=1.0)
     m_handle = mat("M_KnifeHandle", (0.48, 0.29, 0.15), 0.8)
     o = []
     o.append(torus("Knife_Ring", (0, 0, -0.06), (1.0, 1.0, 1.0), m_handle,
@@ -350,8 +358,9 @@ def build_pumpkin():
 
 def build_barrel():
     clear_scene()
-    m_wood = mat("M_BarrelWood", WOOD, 0.95)
-    m_band = mat("M_BarrelBand", IRON, 0.6)
+    # PBR: kayu 0,7; sabuk besi 0,6 / 0,4.
+    m_wood = mat("M_BarrelWood", WOOD, 0.7)
+    m_band = mat("M_BarrelBand", IRON, 0.4, metallic=0.6)
     o = []
     o.append(cyl("Barrel_Body", (0, 0, 0.36), (0.36, 0.36, 0.72), m_wood, 14))
     o.append(torus("Barrel_Band_Top", (0, 0, 0.58), (1.0, 1.0, 1.0), m_band,
@@ -362,8 +371,10 @@ def build_barrel():
 
 
 BUILDERS = [
-    ("turkey", build_turkey),
-    ("farmer", build_farmer),
+    # NOTE (fix round 3, 27 Nov 22:55 WIB): build_turkey + build_farmer di file
+    # ini SUPERSEDED oleh tools/blender/rebuild_characters.py (remodel penuh
+    # PBR + smooth shading + hierarki kepala). JANGAN jalankan daftar ini
+    # untuk kalkun/Bram lagi — daftar di bawah hanya prop yang TIDAK di-remodel.
     ("oven", build_oven),
     ("fence", build_fence),
     ("knife", build_knife),

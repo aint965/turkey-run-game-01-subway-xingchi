@@ -120,6 +120,36 @@ for (const file of glbFiles) {
   glbBytes += size;
 }
 
+// --- Validasi 5 (baru, fix round 3 — remodel + PBR): node karakter + faktor
+// PBR di .glb. Parse JSON chunk GLB (header 12 byte, lalu chunk JSON) tanpa
+// dependensi — build gagal duluan bila pivot kepala hilang atau pisau tidak
+// lagi logam (regresi export Blender akan ketahuan di sini, bukan di game).
+function glbJson(file) {
+  const buf = readFileSync(file);
+  const jsonLen = buf.readUInt32LE(12);
+  const jsonType = buf.readUInt32LE(16);
+  if (jsonType !== 0x4e4f534a) fail(`game/${file} chunk pertama bukan JSON`);
+  return JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'));
+}
+function glbNodeNames(json) {
+  return new Set((json.nodes ?? []).map((n) => n.name));
+}
+const turkeyJson = glbJson(join(gameDir, 'assets/turkey.glb'));
+const farmerJson = glbJson(join(gameDir, 'assets/farmer.glb'));
+const knifeJson = glbJson(join(gameDir, 'assets/knife.glb'));
+for (const need of ['Turkey_Body', 'Turkey_Head', 'Turkey_Wing_L', 'Turkey_Wing_R', 'Turkey_Leg_L', 'Turkey_Leg_R']) {
+  if (!glbNodeNames(turkeyJson).has(need)) fail(`turkey.glb kehilangan node ${need}`);
+}
+for (const need of ['Farmer_HeadPivot', 'Farmer_Head', 'Farmer_Arm_L', 'Farmer_Arm_R', 'Farmer_Hand_L', 'Farmer_Hand_R']) {
+  if (!glbNodeNames(farmerJson).has(need)) fail(`farmer.glb kehilangan node ${need}`);
+}
+// Pisau HARUS logam: minimal satu material metallicFactor >= 0,9
+// (faktor yang hilang = default glTF 1,0).
+const knifeMetal = (knifeJson.materials ?? []).some(
+  (m) => (m.pbrMetallicRoughness?.metallicFactor ?? 1.0) >= 0.9,
+);
+if (!knifeMetal) fail('knife.glb tidak punya material logam (metallicFactor >= 0,9)');
+
 // --- Validasi 4: setiap id DOM yang dipakai game/src/*.js harus ada di
 // game/index.html — drift antara HUD dan kode render membuat game jalan
 // dengan HUD mati tanpa error (pernah: id diganti di HTML, render diam-diam

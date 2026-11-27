@@ -60,61 +60,88 @@ function cone(group, name, color, pos, scale, roughness = 0.85) {
   return mesh;
 }
 
-/** Kalkun prosedural (fallback): bentuk + nama part sama seperti .glb. */
+/** Kalkun prosedural (fallback): bentuk + nama part sama seperti .glb.
+ * Konvensi SAMA seperti .glb (depan +Z): posisi (x, y, z) = (bx, bz, -by)
+ * dari koordinat Blender. Fallback lama terbalik (depan -Z) — diperbaiki
+ * di ronde ini supaya bila .glb gagal dimuat kalkun tidak lari mundur. */
 export function buildTurkeyFallback() {
   const g = new THREE.Group();
   g.name = 'Turkey_Fallback';
-  ball(g, 'Turkey_Body', 0x73451e, [0, 0.62, 0], [0.42, 0.5, 0.55]);
-  ball(g, 'Turkey_Belly', 0x9e6b33, [0, 0.52, -0.22], [0.3, 0.3, 0.38]);
-  cyl(g, 'Turkey_Neck', 0xe8dcc8, [0, 0.98, -0.24], [0.13, 0.3, 0.13]);
-  ball(g, 'Turkey_Head', 0xe8dcc8, [0, 1.2, -0.3], [0.17, 0.16, 0.17]);
-  cone(g, 'Turkey_Beak', 0xe8862e, [0, 1.18, -0.52], [0.07, 0.16, 0.07]).rotation.x = Math.PI / 2;
-  ball(g, 'Turkey_Wattle', 0xd93a2b, [0, 1.06, -0.44], [0.05, 0.05, 0.09]);
-  ball(g, 'Turkey_Eye_L', 0x1a1a1a, [-0.11, 1.26, -0.4], [0.035, 0.035, 0.035]);
-  ball(g, 'Turkey_Eye_R', 0x1a1a1a, [0.11, 1.26, -0.4], [0.035, 0.035, 0.035]);
+  ball(g, 'Turkey_Body', 0x73451e, [0, 0.62, 0], [0.42, 0.55, 0.5]);
+  ball(g, 'Turkey_Belly', 0x9e6b33, [0, 0.52, 0.22], [0.3, 0.38, 0.3]);
+  cyl(g, 'Turkey_Neck', 0xe8dcc8, [0, 0.98, 0.24], [0.13, 0.3, 0.13]);
+  ball(g, 'Turkey_Head', 0xe8dcc8, [0, 1.2, 0.3], [0.17, 0.17, 0.16]);
+  cone(g, 'Turkey_Beak', 0xe8862e, [0, 1.18, 0.52], [0.07, 0.16, 0.07]).rotation.x = Math.PI / 2;
+  ball(g, 'Turkey_Wattle', 0xd93a2b, [0, 1.06, 0.44], [0.05, 0.09, 0.05]);
+  ball(g, 'Turkey_Eye_L', 0x1a1a1a, [-0.11, 1.26, 0.4], [0.035, 0.035, 0.035]);
+  ball(g, 'Turkey_Eye_R', 0x1a1a1a, [0.11, 1.26, 0.4], [0.035, 0.035, 0.035]);
+  // Bulu punggung berlapis (3 baris sirap) — seperti .glb, disederhanakan.
+  const featherRows = [
+    { y: 1.03, z: -0.26, tilt: 0.35, c: 0x855527 },
+    { y: 0.94, z: -0.36, tilt: 0.6, c: 0x4d2b12 },
+    { y: 0.82, z: -0.43, tilt: 0.85, c: 0xad7a3d },
+  ];
+  let fi = 0;
+  for (const row of featherRows) {
+    for (const x of [-0.16, 0, 0.16]) {
+      fi += 1;
+      const f = ball(g, `Turkey_FeatherBack_${fi}`, row.c, [x, row.y, row.z], [0.15, 0.24, 0.05]);
+      f.rotation.x = row.tilt;
+    }
+  }
   for (let i = 0; i < 5; i += 1) {
     const ang = [-0.55, -0.28, 0, 0.28, 0.55][i];
     const tail = ball(g, `Turkey_Tail_${i + 1}`, i % 2 ? 0xe8a33c : 0xa0522d,
-      [Math.sin(ang) * 0.34, 0.95, 0.42 + Math.cos(ang) * 0.1], [0.16, 0.07, 0.46]);
-    tail.rotation.x = -0.49;
+      [Math.sin(ang) * 0.34, 0.95, -(0.42 + Math.cos(ang) * 0.1)], [0.15, 0.48, 0.06]);
+    tail.rotation.x = 0.49;
     tail.rotation.z = -ang * 0.7;
   }
-  ball(g, 'Turkey_Wing_L', 0x52301a, [-0.4, 0.66, 0.02], [0.12, 0.3, 0.4]);
-  ball(g, 'Turkey_Wing_R', 0x52301a, [0.4, 0.66, 0.02], [0.12, 0.3, 0.4]);
+  ball(g, 'Turkey_Wing_L', 0x52301a, [-0.4, 0.66, -0.02], [0.12, 0.4, 0.3]);
+  ball(g, 'Turkey_Wing_R', 0x52301a, [0.4, 0.66, -0.02], [0.12, 0.4, 0.3]);
   cyl(g, 'Turkey_Leg_L', 0xe8862e, [-0.13, 0.14, 0], [0.035, 0.28, 0.035]);
   cyl(g, 'Turkey_Leg_R', 0xe8862e, [0.13, 0.14, 0], [0.035, 0.28, 0.035]);
-  box(g, 'Turkey_Foot_L', 0xe8862e, [-0.13, 0.03, -0.03], [0.16, 0.05, 0.22]);
-  box(g, 'Turkey_Foot_R', 0xe8862e, [0.13, 0.03, -0.03], [0.16, 0.05, 0.22]);
+  box(g, 'Turkey_Foot_L', 0xe8862e, [-0.13, 0.03, 0.03], [0.16, 0.22, 0.05]);
+  box(g, 'Turkey_Foot_R', 0xe8862e, [0.13, 0.03, 0.03], [0.16, 0.22, 0.05]);
   return g;
 }
 
-/** Petani Bram prosedural (fallback). */
+/** Petani Bram prosedural (fallback) — seirama .glb PBR: wajah rapi
+ * (mata tertanam + pupil, jenggot, alis, pita topi) + pivot leher
+ * (Farmer_HeadPivot) supaya glance-back jalan juga saat fallback dipakai.
+ * Konvensi sama seperti .glb (depan +Z); posisi lokal kepala = dunia - pivot. */
 export function buildFarmerFallback() {
   const g = new THREE.Group();
   g.name = 'Farmer_Fallback';
   cyl(g, 'Farmer_Leg_L', 0x3b5b8c, [-0.17, 0.3, 0], [0.11, 0.6, 0.11]);
   cyl(g, 'Farmer_Leg_R', 0x3b5b8c, [0.17, 0.3, 0], [0.11, 0.6, 0.11]);
-  box(g, 'Farmer_Boot_L', 0x5c3a1e, [-0.17, 0.07, -0.05], [0.17, 0.13, 0.3]);
-  box(g, 'Farmer_Boot_R', 0x5c3a1e, [0.17, 0.07, -0.05], [0.17, 0.13, 0.3]);
-  ball(g, 'Farmer_Body', 0x4a7c59, [0, 1.02, 0], [0.44, 0.36, 0.52]);
-  box(g, 'Farmer_Apron', 0x3b5b8c, [0, 0.95, -0.33], [0.48, 0.62, 0.06]);
-  ball(g, 'Farmer_Head', 0xe8b88a, [0, 1.66, -0.02], [0.23, 0.22, 0.23]);
-  ball(g, 'Farmer_Beard', 0xe8dcc8, [0, 1.52, -0.16], [0.16, 0.1, 0.14]);
-  ball(g, 'Farmer_Nose', 0xe8b88a, [0, 1.66, -0.24], [0.05, 0.05, 0.05]);
-  // Mata besar (putih + pupil) — seirama .glb supaya wajah terbaca dari
-  // kamera chase yang tinggi, juga saat fallback dipakai.
-  ball(g, 'Farmer_EyeWhite_L', 0xffffff, [-0.09, 1.72, -0.215], [0.065, 0.05, 0.065]);
-  ball(g, 'Farmer_EyeWhite_R', 0xffffff, [0.09, 1.72, -0.215], [0.065, 0.05, 0.065]);
-  ball(g, 'Farmer_Eye_L', 0x1a1a1a, [-0.09, 1.72, -0.26], [0.032, 0.032, 0.032]);
-  ball(g, 'Farmer_Eye_R', 0x1a1a1a, [0.09, 1.72, -0.26], [0.032, 0.032, 0.032]);
-  cyl(g, 'Farmer_HatBrim', 0xd9b45b, [0, 1.86, -0.02], [0.44, 0.04, 0.44]);
-  ball(g, 'Farmer_HatTop', 0xd9b45b, [0, 1.88, -0.02], [0.24, 0.16, 0.24]);
-  const armL = cyl(g, 'Farmer_Arm_L', 0x4a7c59, [-0.46, 1.18, -0.1], [0.1, 0.55, 0.1]);
+  box(g, 'Farmer_Boot_L', 0x5c3a1e, [-0.17, 0.07, 0.05], [0.17, 0.13, 0.3]);
+  box(g, 'Farmer_Boot_R', 0x5c3a1e, [0.17, 0.07, 0.05], [0.17, 0.13, 0.3]);
+  ball(g, 'Farmer_Body', 0x4a7c59, [0, 1.02, 0], [0.44, 0.52, 0.36]);
+  box(g, 'Farmer_Apron', 0x3b5b8c, [0, 0.95, 0.33], [0.48, 0.62, 0.06]);
+  box(g, 'Farmer_ApronStrap_L', 0x3b5b8c, [-0.18, 1.34, 0.3], [0.07, 0.3, 0.05]);
+  box(g, 'Farmer_ApronStrap_R', 0x3b5b8c, [0.18, 1.34, 0.3], [0.07, 0.3, 0.05]);
+  const armL = cyl(g, 'Farmer_Arm_L', 0x4a7c59, [-0.46, 1.18, 0.1], [0.1, 0.55, 0.1]);
   armL.rotation.x = 0.61;
-  const armR = cyl(g, 'Farmer_Arm_R', 0x4a7c59, [0.46, 1.18, -0.1], [0.1, 0.55, 0.1]);
+  const armR = cyl(g, 'Farmer_Arm_R', 0x4a7c59, [0.46, 1.18, 0.1], [0.1, 0.55, 0.1]);
   armR.rotation.x = 0.61;
-  ball(g, 'Farmer_Hand_L', 0xe8b88a, [-0.46, 0.93, 0.06], [0.09, 0.09, 0.09]);
-  ball(g, 'Farmer_Hand_R', 0xe8b88a, [0.46, 0.93, 0.06], [0.09, 0.09, 0.09]);
+  ball(g, 'Farmer_Hand_L', 0xe8b88a, [-0.46, 0.93, -0.06], [0.09, 0.09, 0.09]);
+  ball(g, 'Farmer_Hand_R', 0xe8b88a, [0.46, 0.93, -0.06], [0.09, 0.09, 0.09]);
+  const pivot = new THREE.Group();
+  pivot.name = 'Farmer_HeadPivot';
+  pivot.position.set(0, 1.44, 0.02);
+  g.add(pivot);
+  ball(pivot, 'Farmer_Head', 0xe8b88a, [0, 0.22, 0], [0.23, 0.23, 0.22]);
+  ball(pivot, 'Farmer_Beard', 0xe8dcc8, [0, 0.04, 0.12], [0.17, 0.15, 0.1]);
+  ball(pivot, 'Farmer_Nose', 0xe8b88a, [0, 0.2, 0.225], [0.055, 0.055, 0.055]);
+  ball(pivot, 'Farmer_EyeWhite_L', 0xffffff, [-0.085, 0.28, 0.185], [0.048, 0.048, 0.048]);
+  ball(pivot, 'Farmer_EyeWhite_R', 0xffffff, [0.085, 0.28, 0.185], [0.048, 0.048, 0.048]);
+  ball(pivot, 'Farmer_Eye_L', 0x1a1a1a, [-0.085, 0.28, 0.228], [0.022, 0.022, 0.022]);
+  ball(pivot, 'Farmer_Eye_R', 0x1a1a1a, [0.085, 0.28, 0.228], [0.022, 0.022, 0.022]);
+  ball(pivot, 'Farmer_Brow_L', 0x73451e, [-0.085, 0.36, 0.2], [0.06, 0.03, 0.025]);
+  ball(pivot, 'Farmer_Brow_R', 0x73451e, [0.085, 0.36, 0.2], [0.06, 0.03, 0.025]);
+  cyl(pivot, 'Farmer_HatBrim', 0xd9b45b, [0, 0.46, 0], [0.38, 0.035, 0.38]);
+  cyl(pivot, 'Farmer_HatBand', 0x73451e, [0, 0.5, 0], [0.24, 0.05, 0.24]);
+  ball(pivot, 'Farmer_HatTop', 0xd9b45b, [0, 0.48, 0], [0.23, 0.15, 0.23]);
   return g;
 }
 
