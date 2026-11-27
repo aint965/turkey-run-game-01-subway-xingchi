@@ -8,7 +8,8 @@
 // Berbeda dari starter: sebelum menyalin, program ini MEMVALIDASI isi
 // (screenshot harus 3-4 file JPEG/PNG, masing-masing <= 256 KiB; game/
 // harus punya index.html; game/ tidak boleh melewati cap file/byte scorer;
-// setiap .glb di game/assets/ harus ber-magic 'glTF' dan tidak kosong),
+// setiap .glb di game/assets/ harus ber-magic 'glTF' dan tidak kosong;
+// setiap id DOM yang dipakai game/src/*.js harus ada di index.html),
 // mengosongkan isi screenshots/ lama di output file-per-file (tanpa pernah
 // menghapus direktorinya — folder output grader adalah mount point) supaya
 // file basi tidak bocor,
@@ -118,6 +119,20 @@ for (const file of glbFiles) {
   if (declaredLength !== size) fail(`game/${file} panjang header ${declaredLength} != ukuran file ${size}`);
   glbBytes += size;
 }
+
+// --- Validasi 4: setiap id DOM yang dipakai game/src/*.js harus ada di
+// game/index.html — drift antara HUD dan kode render membuat game jalan
+// dengan HUD mati tanpa error (pernah: id diganti di HTML, render diam-diam
+// gagal update). Dijalankan di sini supaya build gagal duluan, bukan game.
+const htmlText = readFileSync(join(gameDir, 'index.html'), 'utf8');
+const htmlIds = new Set([...htmlText.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
+const usedIds = new Set();
+for (const file of gameFiles.filter((f) => f.startsWith('src/') && f.endsWith('.js'))) {
+  const src = readFileSync(join(gameDir, file), 'utf8');
+  for (const m of src.matchAll(/(?:getElementById|el)\('([^']+)'\)/g)) usedIds.add(m[1]);
+}
+const missingIds = [...usedIds].filter((id) => !htmlIds.has(id));
+if (missingIds.length > 0) fail(`id DOM dipakai src tapi tidak ada di index.html: ${missingIds.join(', ')}`);
 
 // --- Salin (kosongkan isi output lama file-per-file supaya file basi tidak
 // bocor — JANGAN pernah menghapus direktorinya: di mesin grader folder output

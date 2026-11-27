@@ -36,21 +36,75 @@ export function createRenderer(canvas, templates) {
   const sun = new THREE.DirectionalLight(0xffe8b0, 1.75);
   sun.position.set(6, 12, 6);
   scene.add(sun);
+  // Bayangan NYATA (satu directional light, resep skill materials-lighting):
+  // shadow map 512 mengikuti pemain, bias + normalBias melawan acne.
+  // Ini yang paling mengubah kesan "plastik" jadi nyata — kalkun, Bram,
+  // pohon, dan rintangan kini melempar bayangan searah matahari.
+  // (1024 diukur: renderMs 16,85 ms > ambang 16 ms di SwiftShader VM ini —
+  //  512 cukup untuk bayangan lembut low-poly dan jauh lebih murah.)
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(512, 512);
+  sun.shadow.camera.left = -35;
+  sun.shadow.camera.right = 35;
+  sun.shadow.camera.top = 35;
+  sun.shadow.camera.bottom = -35;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 100;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.5;
+  scene.add(sun.target);
+
+  // Kubah langit bergradasi (bukan warna datar): atas lebih dalam, horizon
+  // pucat hangat — kedalaman atmosfer. Tekstur digambar ulang per zona.
+  const skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 4;
+  skyCanvas.height = 256;
+  const skyCtx = skyCanvas.getContext('2d');
+  const skyTex = new THREE.CanvasTexture(skyCanvas);
+  skyTex.colorSpace = THREE.SRGBColorSpace;
+  const skyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(160, 16, 12),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false }),
+  );
+  skyDome.renderOrder = -1;
+  scene.add(skyDome);
+  function paintSky(zone) {
+    const top = new THREE.Color(zone.sky).multiplyScalar(0.78);
+    const horizon = new THREE.Color(zone.fog).lerp(new THREE.Color(0xffffff), 0.4);
+    const g = skyCtx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, `#${top.getHexString()}`);
+    g.addColorStop(0.55, `#${horizon.getHexString()}`);
+    g.addColorStop(1, `#${horizon.getHexString()}`);
+    skyCtx.fillStyle = g;
+    skyCtx.fillRect(0, 0, 4, 256);
+    skyTex.needsUpdate = true;
+  }
 
   // ---- trek: segmen tanah yang didaur ulang (bergerak maju, lompat ke belakang)
   const groundMat = new THREE.MeshStandardMaterial({ color: ZONES[0].ground, roughness: 1 });
   const trackMat = new THREE.MeshStandardMaterial({ color: 0x9a7b4f, roughness: 1 });
+  const wornMat = new THREE.MeshStandardMaterial({ color: 0xa8845a, roughness: 1 });
   const dashMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
   const segments = [];
   for (let i = 0; i < SEG_COUNT; i += 1) {
     const group = new THREE.Group();
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(46, SEG_LEN), groundMat);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     group.add(ground);
     const track = new THREE.Mesh(new THREE.PlaneGeometry(7.6, SEG_LEN), trackMat);
     track.rotation.x = -Math.PI / 2;
     track.position.y = 0.02;
+    track.receiveShadow = true;
     group.add(track);
+    // Jalur tengah terinjak (lebih terang, tanah terpadatkan) — trek bukan
+    // lagi bidang cokelat datar; jejak lari kalkun terbaca.
+    const worn = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.02, SEG_LEN), wornMat);
+    worn.position.y = 0.03;
+    worn.receiveShadow = true;
+    group.add(worn);
     for (const x of [-1.1, 1.1]) {
       for (let d = 0; d < 3; d += 1) {
         const dash = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 1.6), dashMat);
@@ -162,15 +216,18 @@ export function createRenderer(canvas, templates) {
     };
     // Dinding lumbung: papan kayu tinggi di kedua sisi + pintu + jendela
     // hayloft hangat + lentera — zona terbaca sebagai LUMBUNG, bukan gurun.
+    // Dinding lumbung LEBIH TERANG + LEBIH LAPANG (dulu ±5,6 m, kayu gelap —
+    // koridor terbaca gelap/sempit): dinding digeser ke ±6,4 m, papan kayu
+    // lebih cerah, trim lebih hangat.
     const barnWall = (side) => {
-      const x = side * 5.6;
-      add(box(0.3, 6.0, 30), 0x8a6b42, x, 3.0, -9);
-      for (let z = -24; z <= 6; z += 3) add(box(0.34, 5.9, 0.18), 0x6b4a2f, x, 3.0, z);
-      add(box(0.36, 0.3, 30), 0x5d4028, x, 5.8, -9);
-      add(box(0.36, 0.3, 30), 0x5d4028, x, 0.25, -9);
+      const x = side * 6.4;
+      add(box(0.3, 6.0, 30), 0xa8824e, x, 3.0, -9);
+      for (let z = -24; z <= 6; z += 3) add(box(0.34, 5.9, 0.18), 0x8a6b42, x, 3.0, z);
+      add(box(0.36, 0.3, 30), 0x7a5c36, x, 5.8, -9);
+      add(box(0.36, 0.3, 30), 0x7a5c36, x, 0.25, -9);
       // Pintu lumbung (satu per segmen, sisi bergantian) + jendela hangat.
       const doorZ = side < 0 ? -18 : -4;
-      add(box(0.4, 3.4, 2.2), 0x5d4028, x, 1.7, doorZ);
+      add(box(0.4, 3.4, 2.2), 0x7a5c36, x, 1.7, doorZ);
       add(box(0.42, 0.18, 2.4), 0x3a2a18, x, 3.5, doorZ);
       // Jendela hayloft: bingkai kayu + ambang supaya tidak mengambang.
       // wx menonjol sedikit dari permukaan dinding ke arah trek.
@@ -181,12 +238,13 @@ export function createRenderer(canvas, templates) {
       add(box(0.12, 1.2, 0.14), 0x5d4028, wx, 4.4, -doorZ - 0.68);
       add(box(0.12, 1.2, 0.14), 0x5d4028, wx, 4.4, -doorZ + 0.68);
       add(box(0.16, 0.1, 1.6), 0x5d4028, wx, 3.68, -doorZ);
-      // Lentera di tiang di depan dinding.
-      add(cyl(0.06, 1.6), 0x3a2a18, side * 4.9, 0.8, doorZ + 3);
-      add(box(0.3, 0.35, 0.3), 0xffc861, side * 4.9, 1.75, doorZ + 3);
+      // Lentera di tiang di depan dinding (ikut dinding yang digeser keluar).
+      add(cyl(0.06, 1.6), 0x3a2a18, side * 5.7, 0.8, doorZ + 3);
+      add(box(0.3, 0.35, 0.3), 0xffc861, side * 5.7, 1.75, doorZ + 3);
     };
+    // Dinding dapur ikut digeser keluar (±6,4 m) supaya koridor sama lapangnya.
     const brickWall = (side) => {
-      const x = side * 5.6;
+      const x = side * 6.4;
       add(box(0.3, 3.2, 30), 0x9a5a44, x, 1.6, -9);
       for (let z = -24; z <= 6; z += 2) add(box(0.32, 0.5, 0.12), 0xb88a6a, x, 2.6, z);
       add(box(0.36, 0.25, 30), 0x7a4a38, x, 3.25, -9);
@@ -252,6 +310,8 @@ export function createRenderer(canvas, templates) {
     const merged = mergeGeometries(parts, false);
     const mesh = new THREE.Mesh(merged, clusterMat);
     mesh.frustumCulled = false;
+    mesh.castShadow = true; // pohon/pagar/lumbung melempar bayangan
+    mesh.receiveShadow = true;
     const cloudMesh = cloudParts.length > 0
       ? new THREE.Mesh(mergeGeometries(cloudParts, false), cloudMat)
       : null;
@@ -276,12 +336,22 @@ export function createRenderer(canvas, templates) {
       });
     }
   }
+  // Cahaya per zona: lumbung paling terang (dulu koridor gelap) — hemi 1,6
+  // + matahari 2,0 mengangkat dinding kayu; halaman 1,25 / dapur 1,35.
+  const ZONE_LIGHT = [
+    { hemi: 1.25, sun: 1.75 },
+    { hemi: 1.6, sun: 2.0 },
+    { hemi: 1.35, sun: 1.85 },
+  ];
   function applyZone(zoneIndex) {
     const zone = ZONES[zoneIndex];
     groundMat.color.setHex(zone.ground);
     scene.background.setHex(zone.sky);
     scene.fog.color.setHex(zone.fog);
     hemi.groundColor.setHex(zone.side);
+    hemi.intensity = ZONE_LIGHT[zoneIndex].hemi;
+    sun.intensity = ZONE_LIGHT[zoneIndex].sun;
+    paintSky(zone);
     applyClusters(zoneIndex);
   }
 
@@ -292,10 +362,20 @@ export function createRenderer(canvas, templates) {
     new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false }),
   );
   scene.add(sunDisc);
+  // Halo matahari: cakram tembus pandang yang lebih besar di belakang
+  // matahari — cahaya terasa hangat dan menyebar, bukan titik datar.
+  const sunHalo = new THREE.Mesh(
+    new THREE.CircleGeometry(6.5, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.22, fog: false, depthWrite: false }),
+  );
+  scene.add(sunHalo);
+  const haloDir = new THREE.Vector3();
 
-  // ---- blob shadow (murah, tanpa shadow map)
+  // ---- blob shadow (murah, tanpa shadow map) — kini hanya penguat kontak
+  // (bayangan nyata sudah ada): opasitas diturunkan 0,28 -> 0,18 supaya
+  // tidak dobel-gelap.
   const blobGeo = new THREE.CircleGeometry(1, 20);
-  const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+  const blobMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false });
   function makeBlob(scale) {
     const blob = new THREE.Mesh(blobGeo, blobMat);
     blob.rotation.x = -Math.PI / 2;
@@ -307,6 +387,7 @@ export function createRenderer(canvas, templates) {
 
   // ---- kalkun pemain + hantu trail (motion-blur equivalent)
   const turkey = templates.turkey.clone();
+  turkey.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(turkey);
   const turkeyParts = {
     wingL: turkey.getObjectByName('Turkey_Wing_L'),
@@ -314,6 +395,7 @@ export function createRenderer(canvas, templates) {
     legL: turkey.getObjectByName('Turkey_Leg_L'),
     legR: turkey.getObjectByName('Turkey_Leg_R'),
     body: turkey.getObjectByName('Turkey_Body'),
+    head: turkey.getObjectByName('Turkey_Head'),
   };
   const turkeyBlob = makeBlob(0.85);
   const ghosts = [];
@@ -334,10 +416,11 @@ export function createRenderer(canvas, templates) {
   const trail = []; // riwayat posisi (x, y, z) untuk ghost trail
 
   // ---- petani Bram (mengejar dari belakang, di antara kamera dan kalkun)
-  // Skala 1,15: ancaman harus terbaca besar, tapi topi tidak boleh mendominasi
-  // foreground (kamera juga dimundurkan — lihat bawah).
+  // Skala 1,05 (dulu 1,15): ancaman tetap terbaca, tapi topi jerami tidak
+  // lagi mendominasi foreground — kamera juga dimundurkan (lihat bawah).
   const farmer = templates.farmer.clone();
-  farmer.scale.setScalar(1.15);
+  farmer.scale.setScalar(1.05);
+  farmer.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(farmer);
   const farmerParts = {
     armL: farmer.getObjectByName('Farmer_Arm_L'),
@@ -370,6 +453,26 @@ export function createRenderer(canvas, templates) {
       templates.knife.add(edge);
     }
   }
+  // Material NYATA (bukan plastik matte): bilah pisau logam berkilau,
+  // badan oven besi gelap, gagang oven baja, api oven membara.
+  // Diubah di TEMPLATE sebelum pool meng-clone — semua clone ikut.
+  {
+    const blade = templates.knife.getObjectByName('Knife_Blade');
+    if (blade && blade.material) Object.assign(blade.material, { color: 0xd8dce2, metalness: 0.85, roughness: 0.25 });
+    const tip = templates.knife.getObjectByName('Knife_Tip');
+    if (tip && tip.material) Object.assign(tip.material, { color: 0xc8ccd4, metalness: 0.85, roughness: 0.3 });
+    const ring = templates.knife.getObjectByName('Knife_Ring');
+    if (ring && ring.material) Object.assign(ring.material, { metalness: 0.6, roughness: 0.4 });
+    const ovenBody = templates.oven.getObjectByName('Oven_Body');
+    if (ovenBody && ovenBody.material) Object.assign(ovenBody.material, { metalness: 0.55, roughness: 0.45 });
+    const ovenHandle = templates.oven.getObjectByName('Oven_Handle');
+    if (ovenHandle && ovenHandle.material) Object.assign(ovenHandle.material, { metalness: 0.8, roughness: 0.3 });
+    const ovenFire = templates.oven.getObjectByName('Oven_Fire');
+    if (ovenFire && ovenFire.material) {
+      ovenFire.material.emissive.setHex(0xff5500);
+      ovenFire.material.emissiveIntensity = 1.4;
+    }
+  }
 
   // ---- pool rintangan (clone template .glb)
   // Nama kind world ('hay') vs nama file aset ('haystack') dipetakan di sini.
@@ -382,6 +485,7 @@ export function createRenderer(canvas, templates) {
     for (let i = 0; i < count; i += 1) {
       const mesh = templates[TEMPLATE_FOR[kind]].clone();
       mesh.visible = false;
+      mesh.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       scene.add(mesh);
       pools[kind].push(mesh);
       poolBlobs[kind].push(makeBlob(kind === 'oven' ? 1.0 : 0.8));
@@ -397,21 +501,23 @@ export function createRenderer(canvas, templates) {
   const knifeArcs = [];
   for (let i = 0; i < POOL.knife; i += 1) {
     const beam = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 0.26, 0.22),
+      new THREE.BoxGeometry(2.4, 0.32, 0.24),
       new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.9 }),
     );
     beam.position.y = 3.05;
     beam.visible = false;
+    beam.castShadow = true;
     scene.add(beam);
     knifeBeams.push(beam);
     const posts = [];
     for (const side of [-1.2, 1.2]) {
       const post = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 3.05, 0.14),
+        new THREE.BoxGeometry(0.18, 3.05, 0.18),
         new THREE.MeshStandardMaterial({ color: 0x5d4028, roughness: 0.95 }),
       );
       post.position.y = 1.52;
       post.visible = false;
+      post.castShadow = true;
       scene.add(post);
       posts.push(post);
     }
@@ -425,16 +531,19 @@ export function createRenderer(canvas, templates) {
       );
       brace.rotation.z = -s * 0.6;
       brace.visible = false;
+      brace.castShadow = true;
       scene.add(brace);
       braces.push(brace);
     }
     knifeBraces.push(braces);
     // Busur ayun (motion-blur): sektor tembus pandang yang disapu bilah
     // (bilah menggantung ke -Y, mengayun +-0,55 rad -> sektor 238,5-301,5°).
+    // Busur ayun LEBIH TERLIHAT dari jauh (dulu opacity 0,16, nyaris hilang):
+    // cincin lebih lebar + lebih pekat supaya pisau terbaca dari kejauhan.
     const arc = new THREE.Mesh(
-      new THREE.RingGeometry(1.25, 1.95, 24, 1, Math.PI * 1.325, Math.PI * 0.35),
+      new THREE.RingGeometry(1.15, 2.05, 24, 1, Math.PI * 1.325, Math.PI * 0.35),
       new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.16,
+        color: 0xffffff, transparent: true, opacity: 0.28,
         side: THREE.DoubleSide, depthWrite: false,
       }),
     );
@@ -460,14 +569,22 @@ export function createRenderer(canvas, templates) {
   cornMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   cornMesh.count = 0;
   cornMesh.frustumCulled = false;
+  cornMesh.castShadow = true;
   scene.add(cornMesh);
 
   // ---- HUD (DOM, update hanya saat nilai berubah)
+  // Bar menu kayu-peternakan: skor + kecepatan (kiri), jarak (tengah),
+  // jagung/kombo + nyawa (kanan); zona kiri-bawah, meter kejar Bram kanan-bawah.
   const hud = {
-    score: el('hud-score'), dist: el('hud-dist'), coins: el('hud-coins'),
-    hearts: el('hud-hearts'), speed: el('hud-speed'), zone: el('hud-zone'),
-    farmer: el('farmer-fill'), warn: el('farmer-warn'),
+    scoreVal: el('hud-score-val'), distVal: el('hud-dist-val'), coinsVal: el('hud-coins-val'),
+    combo: el('hud-combo'), hearts: el('hud-hearts'), speed: el('hud-speed'), zone: el('hud-zone'),
+    farmer: el('farmer-fill'), marker: el('farmer-marker'), warn: el('farmer-warn'),
   };
+  const ZONE_LABEL = ['🌾 HALAMAN PETERNAKAN', '🏠 LUMBUNG', '🍳 DAPUR'];
+  // Format Indonesia: 112916 -> "112.916" (angka besar terbaca masuk akal).
+  function fmt(n) { return Math.floor(n).toLocaleString('id-ID'); }
+  let prevCombo = 1;
+  let prevLives = 3;
   const cache = {};
   function setText(node, key, value) {
     if (cache[key] !== value) {
@@ -551,6 +668,8 @@ export function createRenderer(canvas, templates) {
     if (turkeyParts.wingR) turkeyParts.wingR.rotation.z = -0.2 - flap * 0.5;
     if (turkeyParts.legL) turkeyParts.legL.rotation.x = p.grounded ? Math.sin(phase * 2.2) * 0.6 : 0.4;
     if (turkeyParts.legR) turkeyParts.legR.rotation.x = p.grounded ? -Math.sin(phase * 2.2) * 0.6 : -0.3;
+    // Kepala mengangguk pelan mengikuti langkah (hidup, bukan boneka kaku).
+    if (turkeyParts.head) turkeyParts.head.rotation.x = p.grounded && !p.sliding ? Math.sin(phase * 2.2) * 0.07 : 0;
     // Saat slide, angkat sedikit (+0,1) supaya kaki tidak bertumpuk dengan
     // topi Bram di belakang (nit audit) — bayangan blob tetap di tanah.
     turkey.position.y = p.y + (p.sliding ? 0.1 : 0) + (p.grounded && !p.sliding ? Math.abs(Math.sin(phase * 2.2)) * 0.05 : 0);
@@ -586,7 +705,9 @@ export function createRenderer(canvas, templates) {
     // ia menghadap kamera dan melambai sambil lari di tempat. Lean-back
     // -0,12 mengangkat wajah melewati tepi topi jerami dari kamera tinggi.
     const facingCam = state.caught || state.farmerTaunt;
-    farmer.rotation.set(facingCam ? -0.12 : 0, facingCam ? 0 : Math.PI, 0);
+    // Condong ke depan saat berlari (postur mengejar yang nyata); saat
+    // menghadap kamera ia menegak + lean-back -0,12 seperti sebelumnya.
+    farmer.rotation.set(facingCam ? -0.12 : 0.06, facingCam ? 0 : Math.PI, 0);
     const fPhase = phase * 1.15;
     if (state.caught) {
       // Pose menang: diam, kedua lengan terangkat meraih kalkun.
@@ -679,14 +800,14 @@ export function createRenderer(canvas, templates) {
     if (cornMesh.instanceColor) cornMesh.instanceColor.needsUpdate = true;
 
     // Kamera: follow eksponensial + deadzone + look-ahead, LATE update.
-    // Chase-cam TINGGI (y 5,3) dan MENGEKOR Bram: kamera 5,4 m di belakang
-    // Bram (z = visualGap + 5,4). Mundur dari 4,5: topi Bram mengecil
+    // Chase-cam TINGGI (y 5,3) dan MENGEKOR Bram: kamera 5,7 m di belakang
+    // Bram (z = visualGap + 5,7; dulu 5,4). Mundur lagi: topi Bram mengecil
     // (dominasi topi = cacat fix round) sementara kalkun diperbesar lewat
     // skala 1,6x + FOV 46 — kalkun >=25% tinggi frame, kaki kalkun bersih
-    // dari topi Bram (garis pandang kaki melewati 0,17 m di atas topi).
+    // dari topi Bram (garis pandang kaki melewati topi dengan jarak aman).
     // Saat bahaya naik kamera mendekat + menunduk: semua membesar.
     const danger = Math.max(0, Math.min(1, (6 - state.farmerGap) / (6 - 4.2)));
-    camTarget.set(p.x * 0.55, 5.3 - danger * 0.3, visualGap + 5.4);
+    camTarget.set(p.x * 0.55, 5.3 - danger * 0.3, visualGap + 5.7);
     const rate = 7;
     const k = 1 - Math.exp(-rate * dt);
     camPos.lerp(camTarget, k);
@@ -703,26 +824,62 @@ export function createRenderer(canvas, templates) {
     // ke kanan. Di atas atap lumbung (6 m) dari garis pandang kamera.
     sunDisc.position.set(camPos.x + 16, 12, camPos.z - 65);
     sunDisc.lookAt(camera.position);
+    // Halo mengikuti matahari, 0,5 m lebih jauh dari kamera (tanpa z-fight).
+    haloDir.copy(sunDisc.position).sub(camera.position).normalize();
+    sunHalo.position.copy(sunDisc.position).addScaledVector(haloDir, 0.5);
+    sunHalo.lookAt(camera.position);
+    // Matahari bayangan mengikuti kamera (arah cahaya konsisten dengan
+    // cakram matahari di langit: dari kanan-depan-atas, bayangan jatuh
+    // ke kiri-belakang): posisi + target dihitung dari kamera tiap frame.
+    sun.position.set(camPos.x + 16, 26, camPos.z - 40);
+    sun.target.position.set(camPos.x, 0, camPos.z - 10);
+    sun.target.updateMatrixWorld();
+    // Kubah langit mengikuti kamera (tidak pernah sampai ke tepinya).
+    skyDome.position.set(camera.position.x, 0, camera.position.z - 20);
 
-    // HUD.
+    // HUD (bar menu): angka diformat Indonesia; badge kombo berdenyut tiap
+    // kali pengali NAIK; hati bergoyang saat nyawa berkurang; marker Bram
+    // di lintasan kejar bergerak mengikuti bahaya (animasi CSS, bukan sim).
     if (screen === SCREEN_PLAY || screen === SCREEN_PAUSED) {
-      setText(hud.score, 'score', `SKOR ${state.score}`);
-      setText(hud.dist, 'dist', `${Math.floor(state.distance)} m`);
-      setText(hud.coins, 'coins', state.comboMult > 1 ? `🌽 ${state.coins} ×${state.comboMult}` : `🌽 ${state.coins}`);
+      setText(hud.scoreVal, 'score', fmt(state.score));
+      setText(hud.distVal, 'dist', `${fmt(state.distance)} m`);
+      setText(hud.coinsVal, 'coins', String(state.coins));
+      const mult = state.comboMult;
+      hud.combo.classList.toggle('hot', mult > 1);
+      if (mult !== prevCombo) {
+        setText(hud.combo, 'combo', `×${mult}`);
+        if (mult > prevCombo) {
+          hud.combo.classList.remove('pop');
+          void hud.combo.offsetWidth;
+          hud.combo.classList.add('pop');
+        }
+      }
+      prevCombo = mult;
+      if (state.lives < prevLives) {
+        hud.hearts.classList.remove('hurt');
+        void hud.hearts.offsetWidth;
+        hud.hearts.classList.add('hurt');
+      }
+      prevLives = state.lives;
       setText(hud.hearts, 'hearts', '♥'.repeat(Math.max(0, state.lives)) + '♡'.repeat(Math.max(0, 3 - state.lives)));
-      setText(hud.speed, 'speed', `${speed.toFixed(1)} m/s`);
-      setText(hud.zone, 'zone', ZONES[state.zoneIndex].name);
+      setText(hud.speed, 'speed', `${speed.toFixed(1).replace('.', ',')} m/dtk`);
+      setText(hud.zone, 'zone', ZONE_LABEL[state.zoneIndex]);
       const barDanger = Math.max(0, Math.min(1, (FARMER_GAP_MAX - state.farmerGap) / (FARMER_GAP_MAX - 4.2)));
       hud.farmer.style.width = `${Math.round(barDanger * 100)}%`;
-      hud.warn.style.display = state.farmerGap < 6 ? 'block' : 'none';
+      // Marker Bram mulai di ujung KANAN (jauh dari kalkun) dan mendekat ke
+      // kiri menuju kalkun saat bahaya naik — dulu mulai di 8% (menumpuk
+      // dengan kalkun di ujung kiri saat bahaya 0, jadi blob).
+      hud.marker.style.left = `${88 - barDanger * 80}%`;
+      hud.warn.classList.toggle('show', state.farmerGap < 6);
     }
     if (screen === SCREEN_OVER) {
-      setText(el('over-score'), 'oscore', `Skor: ${state.score}`);
-      setText(el('over-best'), 'obest', `Terbaik: ${best}`);
-      setText(el('over-stats'), 'ostats', `${Math.floor(state.distance)} m  •  🌽 ${state.coins} jagung`);
+      // Skor besar dijelaskan: jarak + bonus jagung (bukan angka inflated).
+      setText(el('over-score'), 'oscore', `Skor: ${fmt(state.score)}`);
+      setText(el('over-best'), 'obest', `Terbaik: ${fmt(best)}`);
+      setText(el('over-stats'), 'ostats', `${fmt(state.distance)} m  •  🌽 ${state.coins} jagung  •  bonus ${fmt(state.bonus)}`);
     }
     if (screen === SCREEN_TITLE) {
-      setText(el('title-best'), 'tbest', best > 0 ? `Skor terbaik: ${best}` : '');
+      setText(el('title-best'), 'tbest', best > 0 ? `Skor terbaik: ${fmt(best)}` : '');
     }
 
     showScreen(screen);
